@@ -1,0 +1,39 @@
+# Voice Forensics Scanner - Requirements
+# Install with: pip install -r requirements.txt
+
+# Core Audio Processing
+sounddevice>=0.4.6
+numpy>=1.24.0
+scipy>=1.10.0
+librosa>=0.10.0
+
+# Voice Activity Detection
+webrtcvad>=2.0.10
+
+# Speaker Recognition
+resemblyzer>=0.1.3
+
+# Noise Reduction
+noisereduce>=2.0.0
+
+# AI - Transcription (optional, for speech-to-text)
+openai-whisper>=20230918
+
+# AI - Speaker Embeddings
+torch>=2.0.0
+
+# Configuration
+python-dotenv>=1.0.0
+
+# Web Dashboard (optional)
+flask>=2.3.0
+flask-cors>=4.0.0
+
+# ONNX Runtime for NPU/GPU acceleration (optional)
+# onnxruntime>=1.16.0
+# For AMD Ryzen AI NPU: pip install onnxruntime-vitisai
+# For NVIDIA GPU: pip install onnxruntime-gpu
+
+# Development & Testing (optional)
+# pytest>=7.4.0
+# pytest-mock>=3.11.0
