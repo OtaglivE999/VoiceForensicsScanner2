@@ -1,0 +1,56 @@
+{
+    "name": "Live Scan Default Configuration",
+    "description": "Default settings for live audio scanning with dialogue pattern recognition",
+    
+    "audio_settings": {
+        "sample_rate": 16000,
+        "channels": 1,
+        "segment_duration_ms": 2000,
+        "buffer_size_seconds": 30,
+        "audio_device": null
+    },
+    
+    "pattern_detection": {
+        "enable_coercive_detection": true,
+        "enable_emotion_detection": true,
+        "enable_dialogue_patterns": true,
+        "enable_linguistic_patterns": true,
+        "min_confidence": 0.5,
+        "alert_threshold": 0.75
+    },
+    
+    "speaker_identification": {
+        "enable_diarization": true,
+        "enable_voice_fingerprinting": true,
+        "enable_speaker_tracking": true
+    },
+    
+    "acceleration": {
+        "enable_npu": true,
+        "enable_gpu": true,
+        "npu_whisper": true,
+        "npu_sentiment": true
+    },
+    
+    "alerts": {
+        "min_alert_level": "medium",
+        "enable_console_alerts": true,
+        "enable_file_logging": true,
+        "cooldown_seconds": 5.0,
+        "escalation_threshold": 3
+    },
+    
+    "output": {
+        "output_directory": "./scan_output",
+        "save_results": true,
+        "save_transcriptions": true,
+        "save_audio_segments": false
+    },
+    
+    "integration": {
+        "use_existing_live_matcher": true,
+        "use_existing_field_processor": true,
+        "use_existing_conversation_dynamics": true,
+        "use_existing_diarization": true
+    }
+}
