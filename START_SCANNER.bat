@@ -17,6 +17,35 @@ if exist "venv\Scripts\activate.bat" (
     echo [OK] Virtual environment activated
 ) else (
     echo [!] No virtual environment found, using system Python
+    echo     Recommend: python -m venv venv
+)
+
+echo.
+echo Verifying required modules...
+echo.
+python verify_install.py
+if errorlevel 1 (
+    echo.
+    echo [!] Missing required modules detected.
+    set /p INSTALL_CHOICE="    Install missing modules now? (y/n): "
+    if /i "%INSTALL_CHOICE%"=="y" (
+        echo.
+        python verify_install.py --install
+        if errorlevel 1 (
+            echo.
+            echo [ERROR] Module installation failed. Please install manually:
+            echo         pip install -r requirements.txt
+            pause
+            goto :end
+        )
+        echo.
+    ) else (
+        echo.
+        echo Please install dependencies manually:
+        echo     pip install -r requirements.txt
+        pause
+        goto :end
+    )
 )
 
 echo.
