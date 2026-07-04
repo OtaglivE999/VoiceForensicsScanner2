@@ -33,24 +33,28 @@ except ImportError:
 @dataclass
 class StreamConfig:
     """Configuration for audio stream."""
-    
+
     sample_rate: int = 16000
     channels: int = 1
     dtype: str = 'float32'
-    
+
     # Device selection
     device_id: Optional[int] = None
     device_name: Optional[str] = None
-    
+
     # Buffering
     buffer_seconds: float = 30.0
     segment_duration_ms: int = 2000
     overlap_ms: int = 500
     blocksize_ms: int = 100
-    
+
     # Processing
     normalize: bool = True
     remove_dc: bool = True
+
+    # iPhone microphone enhancement
+    iphone_enhancement: bool = False
+    iphone_mode: str = 'forensic'
 
 
 # ============================================================================
@@ -60,48 +64,55 @@ class StreamConfig:
 class AudioStreamManager:
     """
     Manages real-time audio capture with buffering.
-    
+
     Features:
     - Device auto-detection and selection
     - Circular buffer for continuous capture
     - Segmented output with configurable overlap
     - Thread-safe operation
+    - iPhone microphone enhancement pipeline
     """
-    
+
     def __init__(self, config: Optional[StreamConfig] = None):
-        """
-        Initialize the audio stream manager.
-        
-        Args:
-            config: Stream configuration
-        """
         if not SD_AVAILABLE:
             raise RuntimeError("sounddevice library not available")
-        
+
         self.config = config or StreamConfig()
-        
+
         # State
         self._running = False
         self._stream = None
         self._device_info: Optional[Dict] = None
-        
+
+        # iPhone microphone enhancement
+        self._iphone_enhancer = None
+        if self.config.iphone_enhancement:
+            try:
+                from ..iphone_microphone import IPhoneMicrophoneEnhancer, create_iphone_enhanced_stream_config
+                iphone_config = create_iphone_enhanced_stream_config(self.config.iphone_mode)
+                self._iphone_enhancer = IPhoneMicrophoneEnhancer(iphone_config)
+                self._iphone_enhancer.detect_capabilities()
+                logger.info(f"iPhone microphone enhancement enabled (mode: {self.config.iphone_mode})")
+            except Exception as e:
+                logger.warning(f"iPhone enhancement not available: {e}")
+
         # Buffer
         buffer_samples = int(self.config.buffer_seconds * self.config.sample_rate)
         self._buffer = np.zeros(buffer_samples, dtype=np.float32)
         self._buffer_pos = 0
         self._buffer_lock = threading.Lock()
-        
+
         # Segmentation
         self._segment_samples = int(self.config.segment_duration_ms * self.config.sample_rate / 1000)
         self._overlap_samples = int(self.config.overlap_ms * self.config.sample_rate / 1000)
         self._last_segment_end = 0
-        
+
         # Callback
         self._segment_callback: Optional[Callable] = None
-        
+
         # Worker
         self._segment_thread: Optional[threading.Thread] = None
-        
+
         # Select device
         self._select_device()
     
@@ -205,22 +216,27 @@ class AudioStreamManager:
         """Callback for incoming audio data."""
         if status:
             logger.warning(f"Audio callback status: {status}")
-        
+
         # Convert to mono if needed
         if indata.ndim > 1:
             audio = indata[:, 0].copy()
         else:
             audio = indata.flatten().copy()
-        
-        # Normalize
-        if self.config.normalize:
-            max_val = np.max(np.abs(audio))
-            if max_val > 0:
-                audio = audio / max_val * 0.95
-        
-        # Remove DC offset
-        if self.config.remove_dc:
-            audio = audio - np.mean(audio)
+
+        # Apply iPhone microphone enhancement if enabled
+        if self._iphone_enhancer is not None:
+            audio, _metrics = self._iphone_enhancer.process_audio(
+                audio, self.config.sample_rate
+            )
+        else:
+            # Standard processing
+            if self.config.normalize:
+                max_val = np.max(np.abs(audio))
+                if max_val > 0:
+                    audio = audio / max_val * 0.95
+
+            if self.config.remove_dc:
+                audio = audio - np.mean(audio)
         
         # Add to buffer
         with self._buffer_lock:

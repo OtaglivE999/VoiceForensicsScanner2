@@ -40,11 +40,15 @@ class ScanConfig:
     channels: int = 1
     device_id: Optional[int] = None
     device_name: Optional[str] = None  # e.g., "Zoom H6"
-    
+
     # Processing settings
     segment_duration_ms: int = 2000      # Process audio in 2-second segments
     overlap_ms: int = 500                 # Overlap between segments
     buffer_seconds: float = 30.0          # Audio buffer size
+
+    # iPhone microphone enhancement
+    iphone_enhancement: bool = False
+    iphone_mode: str = 'forensic'  # forensic, voice_isolation, wide_spectrum, interview, surveillance
     
     # Pattern detection
     enable_dialogue_patterns: bool = True
@@ -243,13 +247,15 @@ class LiveScanEngine:
         if self._audio_stream is None:
             try:
                 from .audio_stream import AudioStreamManager, StreamConfig
-                
+
                 stream_config = StreamConfig(
                     sample_rate=self.config.sample_rate,
                     channels=self.config.channels,
                     device_id=self.config.device_id,
                     device_name=self.config.device_name,
-                    buffer_seconds=self.config.buffer_seconds
+                    buffer_seconds=self.config.buffer_seconds,
+                    iphone_enhancement=self.config.iphone_enhancement,
+                    iphone_mode=self.config.iphone_mode,
                 )
                 self._audio_stream = AudioStreamManager(stream_config)
                 logger.info("Audio stream manager initialized")
@@ -440,6 +446,8 @@ class LiveScanEngine:
         bio_status = "ON" if self._biometric_engine else "OFF"
         enrolled = self._session_stats.get('enrolled_voiceprints', 0)
         print(f"🔐 Biometrics: {bio_status} ({enrolled} voiceprints)")
+        iphone_status = f"ON ({self.config.iphone_mode})" if self.config.iphone_enhancement else "OFF"
+        print(f"📱 iPhone Mic: {iphone_status}")
         print(f"⚡ NPU: {'ON' if self.config.use_npu else 'OFF'}")
         if self.config.enable_dashboard:
             print(f"📊 Dashboard: http://localhost:{self.config.dashboard_port}")
@@ -1073,9 +1081,22 @@ def main():
     parser.add_argument('--no-dashboard', action='store_true', help='Disable dashboard')
     parser.add_argument('--output', type=str, help='Output directory')
     parser.add_argument('--port', type=int, default=8050, help='Dashboard port')
-    
+    parser.add_argument('--iphone', action='store_true', help='Enable iPhone microphone enhancement')
+    parser.add_argument('--iphone-mode', type=str, default='forensic',
+                        choices=['forensic', 'voice_isolation', 'wide_spectrum', 'interview', 'surveillance'],
+                        help='iPhone enhancement mode')
+    parser.add_argument('--iphone-export-swift', type=str, help='Export Swift setup code to file')
+
     args = parser.parse_args()
-    
+
+    if args.iphone_export_swift:
+        from iphone_microphone import IPhoneMicrophoneEnhancer, create_iphone_enhanced_stream_config
+        iphone_cfg = create_iphone_enhanced_stream_config(args.iphone_mode)
+        enhancer = IPhoneMicrophoneEnhancer(iphone_cfg)
+        code = enhancer.export_swift_file(args.iphone_export_swift)
+        print(f"Swift configuration exported to {args.iphone_export_swift}")
+        return
+
     config = ScanConfig(
         device_name=args.device,
         device_id=args.device_id,
@@ -1085,7 +1106,9 @@ def main():
         use_npu=not args.no_npu,
         enable_dashboard=not args.no_dashboard,
         output_dir=args.output,
-        dashboard_port=args.port
+        dashboard_port=args.port,
+        iphone_enhancement=args.iphone,
+        iphone_mode=args.iphone_mode,
     )
     
     engine = LiveScanEngine(config)
