@@ -1,4 +1,4 @@
-<title>VoiceForensics - Live Scanner</title>
+<title>iPhone Voice Fingerprint Scanner</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -302,7 +302,7 @@ button, input[type="range"] {
   <div class="header">
     <div class="header-left">
       <div class="status-dot" id="statusDot"></div>
-      <span class="header-title" id="statusText">VOICE FORENSICS SCANNER</span>
+      <span class="header-title" id="statusText">iPHONE VOICE FINGERPRINT SCANNER</span>
     </div>
     <div class="header-meta" id="headerMeta">IDLE</div>
   </div>
@@ -349,6 +349,7 @@ button, input[type="range"] {
         ULTRA-FAR: &lt;15dB (6m+)
       </div>
     </div>
+    <div id="ambientPanel" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-family:'SF Mono',ui-monospace,monospace;font-size:10px;display:none"></div>
     <div id="scannerGeo" style="font-family:'SF Mono',ui-monospace,monospace;font-size:10px;color:var(--text-dim);text-align:center;padding:4px;display:none"></div>
   </div>
 
@@ -524,6 +525,7 @@ var speakers = {};
 var detectionLog = [];
 var energyHistory = [];
 var sessionStartFull = null;
+var lastAmbient = null;
 
 // ============================================================
 // PERSISTENT STORAGE (localStorage)
@@ -582,7 +584,7 @@ function updateStorageInfo() {
 
 function handleExportLog() {
   if (detectionLog.length === 0) { dbg('No log entries to export'); return; }
-  var csv = 'Date,Time,Speaker_ID,Speaker_Name,Confidence,Verified,SNR_dB,Zone,Distance,Voice_Confidence,Pitch_Hz,Latitude,Longitude,GPS_Accuracy_m,Transcript\n';
+  var csv = 'Date,Time,Speaker_ID,Speaker_Name,Confidence,Verified,SNR_dB,Zone,Distance,Voice_Confidence,Pitch_F0_Hz,F1_Hz,F2_Hz,F3_Hz,F2_F1_Ratio,F3_F2_Ratio,Nasal_Formant_Hz,Nasalance_pct,Ambient_Class,Noise_Floor_dB,Ambient_Peak_Hz,Ambient_Hum_pct,Device_Latitude,Device_Longitude,GPS_Accuracy_m,Transcript\n';
   for (var i = 0; i < detectionLog.length; i++) {
     var d = detectionLog[i];
     var dt = new Date(d.timestamp);
@@ -597,11 +599,22 @@ function handleExportLog() {
     var dist = d.distance || '';
     var vconf = d.voiceConf ? (d.voiceConf * 100).toFixed(1) : '0';
     var pitch = d.pitch ? d.pitch.toFixed(0) : '0';
+    var f1 = d.f1 ? d.f1.toFixed(0) : '';
+    var f2 = d.f2 ? d.f2.toFixed(0) : '';
+    var f3 = d.f3 ? d.f3.toFixed(0) : '';
+    var f2f1 = (d.f1 && d.f2) ? (d.f2 / d.f1).toFixed(2) : '';
+    var f3f2 = (d.f2 && d.f3) ? (d.f3 / d.f2).toFixed(2) : '';
+    var nasalF = d.nasalFormant ? d.nasalFormant.toFixed(0) : '';
+    var nasalance = d.nasalance ? (d.nasalance * 100).toFixed(1) : '';
+    var ambClass = (d.ambientLabel || '').replace(/"/g, '""');
+    var ambFloor = d.ambientFloorDb ? d.ambientFloorDb.toFixed(0) : '';
+    var ambPeak = d.ambientDominantHz ? d.ambientDominantHz.toFixed(0) : '';
+    var ambHum = d.ambientHum ? (d.ambientHum * 100).toFixed(0) : '';
     var lat = d.location ? d.location.lat.toFixed(6) : '';
     var lng = d.location ? d.location.lng.toFixed(6) : '';
     var gpsAcc = d.location ? d.location.accuracy.toFixed(0) : '';
     var transcript = (d.transcript || '').replace(/"/g, '""');
-    csv += '"' + date + '","' + time + '","' + spkId + '","' + spkName + '","' + conf + '%","' + verified + '","' + snr + '","' + zone + '","' + dist + '","' + vconf + '%","' + pitch + '","' + lat + '","' + lng + '","' + gpsAcc + '","' + transcript + '"\n';
+    csv += '"' + date + '","' + time + '","' + spkId + '","' + spkName + '","' + conf + '%","' + verified + '","' + snr + '","' + zone + '","' + dist + '","' + vconf + '%","' + pitch + '","' + f1 + '","' + f2 + '","' + f3 + '","' + f2f1 + '","' + f3f2 + '","' + nasalF + '","' + nasalance + '","' + ambClass + '","' + ambFloor + '","' + ambPeak + '","' + ambHum + '","' + lat + '","' + lng + '","' + gpsAcc + '","' + transcript + '"\n';
   }
   downloadFile('voice_forensics_log_' + formatFileDate() + '.csv', csv, 'text/csv');
   dbg('Exported ' + detectionLog.length + ' log entries as CSV');
@@ -674,6 +687,7 @@ class VoiceFingerprint {
 
   extractFeatures(freqData, timeData, sampleRate) {
     const features = {};
+    this._lastFreqData = freqData; // used by nasalance computation
 
     // Spectral centroid
     let weightedSum = 0, totalEnergy = 0;
@@ -725,6 +739,16 @@ class VoiceFingerprint {
     // Pitch estimate (autocorrelation on time domain)
     features.pitch = this.estimatePitch(timeData, sampleRate);
 
+    // Formants (F1, F2, F3) via LPC spectral envelope + nasal formant/nasalance
+    const formantData = this.extractFormants(timeData, sampleRate);
+    features.f1 = formantData.f1;
+    features.f2 = formantData.f2;
+    features.f3 = formantData.f3;
+    features.f2f1 = formantData.f1 > 0 ? formantData.f2 / formantData.f1 : 0;
+    features.f3f2 = formantData.f2 > 0 ? formantData.f3 / formantData.f2 : 0;
+    features.nasalFormant = formantData.nasalFormant;
+    features.nasalance = formantData.nasalance;
+
     // Zero-crossing rate
     let zcr = 0;
     for (let i = 1; i < timeData.length; i++) {
@@ -733,6 +757,113 @@ class VoiceFingerprint {
     features.zcr = zcr / timeData.length;
 
     return features;
+  }
+
+  // LPC formant extraction: autocorrelation -> Levinson-Durbin -> spectral
+  // envelope peak-picking. Also derives the nasal formant (low-frequency
+  // nasal murmur resonance) and nasalance (nasal-band energy ratio).
+  extractFormants(timeData, sampleRate) {
+    const result = { f1: 0, f2: 0, f3: 0, nasalFormant: 0, nasalance: 0 };
+    const N = Math.min(timeData.length, 2048);
+    if (N < 256) return result;
+
+    // Hamming window + mild pre-emphasis. Coefficient tuned to 0.63: strong
+    // enough to flatten glottal tilt but not so strong it suppresses F1
+    // (0.97 was found to erase the first formant on synthetic vowels).
+    const buf = new Float32Array(N);
+    let prev = 0;
+    for (let i = 0; i < N; i++) {
+      const emphasized = timeData[i] - 0.63 * prev;
+      prev = timeData[i];
+      const w = 0.54 - 0.46 * Math.cos(2 * Math.PI * i / (N - 1));
+      buf[i] = emphasized * w;
+    }
+
+    // Autocorrelation up to LPC order (20 resolves close-spaced formants)
+    const order = 20;
+    const R = new Float64Array(order + 1);
+    for (let lag = 0; lag <= order; lag++) {
+      let s = 0;
+      for (let i = lag; i < N; i++) s += buf[i] * buf[i - lag];
+      R[lag] = s;
+    }
+    if (R[0] === 0) return result;
+
+    // Levinson-Durbin recursion -> LPC coefficients
+    const a = new Float64Array(order + 1);
+    let err = R[0];
+    a[0] = 1;
+    for (let i = 1; i <= order; i++) {
+      let acc = R[i];
+      for (let j = 1; j < i; j++) acc += a[j] * R[i - j];
+      const k = -acc / err;
+      const tmp = new Float64Array(order + 1);
+      for (let j = 0; j <= i; j++) tmp[j] = a[j];
+      for (let j = 1; j < i; j++) a[j] = tmp[j] + k * tmp[i - j];
+      a[i] = k;
+      err *= (1 - k * k);
+      if (err <= 0) { err = 1e-9; break; }
+    }
+
+    // Evaluate LPC power spectral envelope H(f) = 1/|A(e^jw)|^2 on a grid
+    const fMin = 90, fMax = Math.min(4500, sampleRate / 2);
+    const steps = 700;
+    const env = new Float64Array(steps);
+    const freqs = new Float64Array(steps);
+    let envMax = 0;
+    for (let s = 0; s < steps; s++) {
+      const f = fMin + (fMax - fMin) * s / (steps - 1);
+      freqs[s] = f;
+      const w = 2 * Math.PI * f / sampleRate;
+      let re = 0, im = 0;
+      for (let j = 0; j <= order; j++) {
+        re += a[j] * Math.cos(j * w);
+        im -= a[j] * Math.sin(j * w);
+      }
+      const mag2 = re * re + im * im;
+      env[s] = mag2 > 1e-12 ? 1 / mag2 : 1e12;
+      if (env[s] > envMax) envMax = env[s];
+    }
+
+    // Peak-pick the envelope (ignore tiny ripples below 1.5% of the max peak)
+    const peaks = [];
+    for (let s = 1; s < steps - 1; s++) {
+      if (env[s] > env[s - 1] && env[s] >= env[s + 1] && env[s] > envMax * 0.015) peaks.push(freqs[s]);
+    }
+
+    // Assign peaks sequentially so each is used once and F1<F2<F3 is enforced
+    let f1 = 0, f2 = 0, f3 = 0;
+    for (const f of peaks) {
+      if (!f1 && f >= 200 && f <= 1100) { f1 = f; continue; }
+      if (f1 && !f2 && f > f1 + 120 && f >= 650 && f <= 3000) { f2 = f; continue; }
+      if (f2 && !f3 && f > f2 + 200 && f >= 1700 && f <= 4300) { f3 = f; continue; }
+    }
+    result.f1 = f1; result.f2 = f2; result.f3 = f3;
+
+    // Nasal formant: lowest envelope peak in the nasal murmur band (200-500 Hz)
+    for (const f of peaks) { if (f >= 200 && f <= 500) { result.nasalFormant = f; break; } }
+
+    // Nasalance: ratio of nasal-band energy (250-450 Hz) to voiced-band energy
+    // (250-3000 Hz) from the FFT magnitudes — high when nasal murmur dominates.
+    result.nasalance = this._nasalance(sampleRate);
+
+    return result;
+  }
+
+  _nasalance(sampleRate) {
+    if (!this._lastFreqData) return 0;
+    const fd = this._lastFreqData;
+    const nBins = fd.length;
+    const nyquist = sampleRate / 2;
+    const binHz = nyquist / nBins;
+    let nasalE = 0, totalE = 0;
+    for (let i = 0; i < nBins; i++) {
+      const f = i * binHz;
+      const mag = fd[i] / 255;
+      if (f >= 250 && f <= 3000) totalE += mag;
+      if (f >= 250 && f <= 450) nasalE += mag;
+    }
+    return totalE > 0 ? nasalE / totalE : 0;
   }
 
   estimatePitch(timeData, sampleRate) {
@@ -816,6 +947,27 @@ class VoiceFingerprint {
     const rollDiff = Math.abs(a.rolloff - b.rolloff) / Math.max(a.rolloff, b.rolloff, 1);
     score += Math.max(0, 1 - rollDiff * 2) * 1; weights += 1;
 
+    // Formants F1/F2/F3 (vocal-tract anatomy — strong speaker discriminators)
+    const formantSim = (fa, fb, tol) => {
+      if (!(fa > 0) || !(fb > 0)) return null;
+      const d = Math.abs(fa - fb) / tol;
+      return Math.max(0, 1 - d);
+    };
+    const f1s = formantSim(a.f1, b.f1, 150); // ~150 Hz tolerance
+    if (f1s !== null) { score += f1s * 3; weights += 3; }
+    const f2s = formantSim(a.f2, b.f2, 300);
+    if (f2s !== null) { score += f2s * 3; weights += 3; }
+    const f3s = formantSim(a.f3, b.f3, 400);
+    if (f3s !== null) { score += f3s * 2; weights += 2; }
+
+    // Nasal formant + nasalance (nasal-cavity anatomy, resonance/anti-resonance)
+    const nfs = formantSim(a.nasalFormant, b.nasalFormant, 120);
+    if (nfs !== null) { score += nfs * 1.5; weights += 1.5; }
+    if (a.nasalance > 0 && b.nasalance > 0) {
+      const nDiff = Math.abs(a.nasalance - b.nasalance);
+      score += Math.max(0, 1 - nDiff * 4) * 1.5; weights += 1.5;
+    }
+
     return weights > 0 ? score / weights : 0;
   }
 
@@ -827,6 +979,13 @@ class VoiceFingerprint {
     avg.rolloff = (1-alpha) * avg.rolloff + alpha * newF.rolloff;
     avg.pitch = (1-alpha) * avg.pitch + alpha * newF.pitch;
     avg.zcr = (1-alpha) * avg.zcr + alpha * newF.zcr;
+    // Formants + nasal features: only fold in valid (nonzero) measurements so
+    // silent/unvoiced frames don't drag the running average to zero.
+    const ema = (key) => { if (newF[key] > 0) avg[key] = avg[key] > 0 ? (1-alpha)*avg[key] + alpha*newF[key] : newF[key]; };
+    ema('f1'); ema('f2'); ema('f3'); ema('nasalFormant');
+    avg.f2f1 = avg.f1 > 0 ? avg.f2 / avg.f1 : 0;
+    avg.f3f2 = avg.f2 > 0 ? avg.f3 / avg.f2 : 0;
+    if (newF.nasalance > 0) avg.nasalance = avg.nasalance > 0 ? (1-alpha)*avg.nasalance + alpha*newF.nasalance : newF.nasalance;
     for (let i = 0; i < avg.mfcc.length; i++) {
       avg.mfcc[i] = (1-alpha) * avg.mfcc[i] + alpha * (newF.mfcc[i] || 0);
     }
@@ -893,6 +1052,117 @@ function getFieldZone(snr) {
   if (snr >= 6)  return { name: 'ULTRA-FAR', dist: '6m+', cls: 'zone-ultra' };
   if (snr >= 2)  return { name: 'EXTREME', dist: 'very far', cls: 'zone-ultra' };
   return { name: 'WHISPER', dist: 'faint', cls: 'zone-ultra' };
+}
+
+// ============================================================
+// AMBIENT / BACKGROUND ACOUSTIC DISSECTION
+// Runs every cycle (voice OR silence) to characterize the environment.
+// ============================================================
+
+function analyzeAmbient(freqData, timeData, sampleRate) {
+  const nBins = freqData.length;
+  const nyquist = sampleRate / 2;
+  const binHz = nyquist / nBins;
+
+  // Broadband RMS -> noise floor in dB
+  let sumSq = 0;
+  for (let i = 0; i < timeData.length; i++) sumSq += timeData[i] * timeData[i];
+  const rms = Math.sqrt(sumSq / timeData.length);
+  const floorDb = Math.max(-90, 20 * Math.log10(Math.max(rms, 1e-9)));
+
+  // Band energy DENSITY (per-bin average) so wide bands don't dominate the mix
+  const bandAvg = (loHz, hiHz) => {
+    let s = 0, c = 0;
+    for (let i = 1; i < nBins; i++) {
+      const f = i * binHz;
+      if (f >= loHz && f < hiHz) { s += freqData[i] / 255; c++; }
+    }
+    return c > 0 ? s / c : 0;
+  };
+  const dRumble = bandAvg(20, 120), dLow = bandAvg(120, 300), dMid = bandAvg(300, 2000),
+        dHigh = bandAvg(2000, 5000), dHiss = bandAvg(5000, nyquist);
+  const dTotal = dRumble + dLow + dMid + dHigh + dHiss;
+  const norm = (x) => dTotal > 0 ? x / dTotal : 0;
+
+  // Dominant frequency (strongest single bin)
+  let peakBin = 0, peakMag = 0;
+  for (let i = 1; i < nBins; i++) { const m = freqData[i] / 255; if (m > peakMag) { peakMag = m; peakBin = i; } }
+  const dominantHz = peakBin * binHz;
+
+  // Electrical-hum prominence: each harmonic (searched in a ±2-bin window to
+  // tolerate FFT bin misalignment/leakage) must stand sharply above its CLOSE
+  // background (±3..6 bins). Broadband/traffic energy fails this; only narrow
+  // mains tones pass. Score = the weakest harmonic's prominence.
+  const humProm = (base) => {
+    let minRatio = Infinity;
+    for (let k = 1; k <= 3; k++) {
+      const center = Math.round((base * k) / binHz);
+      if (center <= 0 || center >= nBins) { minRatio = 0; break; }
+      let peak = 0;
+      for (let w = -2; w <= 2; w++) { const bi = center + w; if (bi > 0 && bi < nBins) peak = Math.max(peak, freqData[bi] / 255); }
+      let bg = 0, bc = 0;
+      for (let off = 3; off <= 6; off++) {
+        if (center - off > 0) { bg += freqData[center - off] / 255; bc++; }
+        if (center + off < nBins) { bg += freqData[center + off] / 255; bc++; }
+      }
+      bg = bc > 0 ? bg / bc : 1e-6;
+      minRatio = Math.min(minRatio, peak / Math.max(bg, 1e-6));
+    }
+    return isFinite(minRatio) ? minRatio : 0;
+  };
+  const p50 = humProm(50), p60 = humProm(60);
+  const humProminence = Math.max(p50, p60);
+  const humFreq = p60 >= p50 ? 60 : 50;
+  const humLevel = Math.min(1, Math.max(0, (humProminence - 2) / 5)); // 0 at 2x, ~1 at 7x
+
+  // Spectral flatness -> tonal (low) vs broadband (high)
+  let geo = 0, arith = 0, cnt = 0;
+  for (let i = 1; i < nBins; i++) {
+    const mag = Math.max(freqData[i] / 255, 1e-10);
+    geo += Math.log(mag); arith += mag; cnt++;
+  }
+  const flatness = arith > 0 ? Math.exp(geo / cnt) / (arith / cnt) : 0;
+
+  // Heuristic classification of the background environment
+  let label = 'Mixed Ambient';
+  if (rms < 0.004) label = 'Quiet / Still';
+  else if (humProminence > 4) label = humFreq + 'Hz Electrical Hum';
+  else if (norm(dRumble) > 0.34) label = 'Low Rumble / Traffic';
+  else if (flatness > 0.55) label = 'Broadband Noise';
+  else if (norm(dHiss) > 0.34 || norm(dHigh) > 0.40) label = 'Hiss / HVAC / Wind';
+  else if (norm(dMid) > 0.40) label = 'Mid-band Activity / Voices';
+
+  return {
+    floorDb: floorDb,
+    dominantHz: dominantHz,
+    humLevel: humLevel,
+    humFreq: humFreq,
+    humProminence: humProminence,
+    flatness: flatness,
+    bands: { rumble: norm(dRumble), low: norm(dLow), mid: norm(dMid), high: norm(dHigh), hiss: norm(dHiss) },
+    label: label
+  };
+}
+
+function updateAmbientDisplay(amb) {
+  const el = $('ambientPanel');
+  if (!el) return;
+  el.style.display = 'block';
+  const b = amb.bands;
+  const bar = (v, color) => `<div style="flex:1;height:100%;background:${color};opacity:${0.25 + v*0.75}" title="${(v*100).toFixed(0)}%"></div>`;
+  el.innerHTML =
+    `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+       <span style="font-weight:700;color:var(--accent-amber)">AMBIENT: ${amb.label}</span>
+       <span style="color:var(--text-dim)">${amb.floorDb.toFixed(0)}dB floor</span>
+     </div>
+     <div style="display:flex;gap:2px;height:14px;border-radius:3px;overflow:hidden;margin-bottom:3px">
+       ${bar(b.rumble,'#EF4444')}${bar(b.low,'#F59E0B')}${bar(b.mid,'#10B981')}${bar(b.high,'#38BDF8')}${bar(b.hiss,'#A78BFA')}
+     </div>
+     <div style="display:flex;justify-content:space-between;color:var(--text-dim);font-size:9px">
+       <span>Peak ${amb.dominantHz.toFixed(0)}Hz</span>
+       <span>Hum ${(amb.humLevel*100).toFixed(0)}%@${amb.humFreq}Hz</span>
+       <span>Flat ${(amb.flatness*100).toFixed(0)}%</span>
+     </div>`;
 }
 
 // ============================================================
@@ -1122,6 +1392,11 @@ function scanLoop() {
   $('statTotal').textContent = scanStats.totalDetections;
   $('statDuration').textContent = Math.floor((now - scanStartTime) / 1000) + 's';
 
+  // Ambient/background dissection — runs every cycle regardless of voice
+  const ambient = analyzeAmbient(freqData, timeData, ctx.sampleRate);
+  lastAmbient = ambient;
+  updateAmbientDisplay(ambient);
+
   // Voice detected - run full analysis
   if (snrResult.hasVoice) {
     scanStats.voiceSegments++;
@@ -1151,6 +1426,7 @@ function scanLoop() {
     let transcript = transcriptQueue.shift() || '';
 
     // Add detection entry
+    const prof = speakerResult ? fingerprinter.speakers[speakerResult.id]?.avgFeatures : null;
     addDetectionEntry({
       time: new Date(),
       speaker: speakerResult,
@@ -1160,7 +1436,13 @@ function scanLoop() {
       rms: snrResult.rms,
       peak: snrResult.peak,
       transcript: transcript,
-      pitch: speakerResult ? fingerprinter.speakers[speakerResult.id]?.avgFeatures?.pitch : 0,
+      pitch: prof ? prof.pitch : 0,
+      f1: prof ? prof.f1 : 0,
+      f2: prof ? prof.f2 : 0,
+      f3: prof ? prof.f3 : 0,
+      nasalFormant: prof ? prof.nasalFormant : 0,
+      nasalance: prof ? prof.nasalance : 0,
+      ambient: ambient,
       location: currentLocation ? { lat: currentLocation.lat, lng: currentLocation.lng, accuracy: currentLocation.accuracy } : null
     });
   }
@@ -1185,6 +1467,15 @@ function addDetectionEntry(det) {
     distance: det.zone.dist,
     voiceConf: det.voiceConf,
     pitch: det.pitch,
+    f1: det.f1 || 0,
+    f2: det.f2 || 0,
+    f3: det.f3 || 0,
+    nasalFormant: det.nasalFormant || 0,
+    nasalance: det.nasalance || 0,
+    ambientLabel: det.ambient ? det.ambient.label : '',
+    ambientFloorDb: det.ambient ? det.ambient.floorDb : 0,
+    ambientDominantHz: det.ambient ? det.ambient.dominantHz : 0,
+    ambientHum: det.ambient ? det.ambient.humLevel : 0,
     transcript: det.transcript || '',
     location: det.location || null
   };
@@ -1226,11 +1517,17 @@ function addDetectionEntry(det) {
     </div>`;
 
   if (det.speaker && det.speaker.confidence > 0.5) {
+    let formantLine = '';
+    if (det.f1 > 0) formantLine += `<span>F1:${det.f1.toFixed(0)}</span>`;
+    if (det.f2 > 0) formantLine += `<span>F2:${det.f2.toFixed(0)}</span>`;
+    if (det.f3 > 0) formantLine += `<span>F3:${det.f3.toFixed(0)}</span>`;
+    if (det.nasalFormant > 0) formantLine += `<span>Nasal:${det.nasalFormant.toFixed(0)}Hz</span>`;
+    if (det.nasalance > 0) formantLine += `<span>Nz:${(det.nasalance*100).toFixed(0)}%</span>`;
     html += `<div class="detection-biometrics">
       <span>MFCC:${(det.speaker.confidence*100).toFixed(0)}%</span>
-      <span>Spectral:${(det.speaker.confidence*95).toFixed(0)}%</span>
       ${det.speaker.detections > 1 ? `<span>x${det.speaker.detections}</span>` : ''}
     </div>`;
+    if (formantLine) html += `<div class="detection-biometrics" style="color:var(--accent-purple)">${formantLine}</div>`;
   }
 
   if (det.transcript) {
@@ -1261,11 +1558,18 @@ function updateSpeakerList(result) {
     const initial = prof.name.charAt(prof.name.length - 1);
     const lastSeen = prof.lastSeen ? new Date(prof.lastSeen).toLocaleTimeString('en-US', {hour12:false, hour:'2-digit', minute:'2-digit'}) : '--';
 
+    const af = prof.avgFeatures || {};
+    let formantStr = '';
+    if (af.f1 > 0) formantStr += ` | F1:${af.f1.toFixed(0)} F2:${af.f2.toFixed(0)} F3:${af.f3.toFixed(0)}`;
+    if (af.nasalFormant > 0) formantStr += ` | Nasal:${af.nasalFormant.toFixed(0)}Hz`;
+    if (af.nasalance > 0) formantStr += ` (Nz ${(af.nasalance*100).toFixed(0)}%)`;
+
     html += `<div class="speaker-card">
       <div class="speaker-avatar" style="background:${color}">${initial}</div>
       <div class="speaker-info">
         <div class="speaker-name">${prof.name}</div>
-        <div class="speaker-detail">${prof.detections} detections | F0: ${prof.avgFeatures.pitch?.toFixed(0) || '?'}Hz</div>
+        <div class="speaker-detail">${prof.detections} detections | F0: ${af.pitch?.toFixed(0) || '?'}Hz | last ${lastSeen}</div>
+        <div class="speaker-detail" style="color:var(--accent-purple);font-size:10px">${formantStr || 'formants pending...'}</div>
       </div>
       <div class="speaker-conf" style="color:${color}">${id}</div>
     </div>`;
