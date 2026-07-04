@@ -363,11 +363,7 @@ class LiveScanEngine:
             except Exception as e:
                 logger.error(f"Failed to initialize biometric engine: {e}")
                 self._biometric_engine = None
-                    
-            except Exception as e:
-                logger.error(f"Failed to initialize biometric engine: {e}")
-                self._biometric_engine = None
-    
+
     # ========================================================================
     # Main Control
     # ========================================================================
