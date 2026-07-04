@@ -830,7 +830,6 @@ class VoiceFingerprint {
     for (let i = 0; i < avg.mfcc.length; i++) {
       avg.mfcc[i] = (1-alpha) * avg.mfcc[i] + alpha * (newF.mfcc[i] || 0);
     }
-    this.speakers[Object.keys(this.speakers).find(k => this.speakers[k].avgFeatures === avg)];
   }
 }
 
@@ -1190,6 +1189,8 @@ function addDetectionEntry(det) {
     location: det.location || null
   };
   detectionLog.push(logEntry);
+  // Cap in-memory log to avoid unbounded growth during long surveillance sessions
+  if (detectionLog.length > 1000) detectionLog = detectionLog.slice(-1000);
   if (detectionLog.length % 10 === 0) saveDetectionLog();
 
   const feed = $('scannerFeed');
