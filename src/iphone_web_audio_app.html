@@ -227,6 +227,7 @@ button, input[type="range"] {
   cursor: pointer; border: none; outline: none;
   touch-action: manipulation;
   transition: background 0.2s;
+  font-size: 0; color: transparent; overflow: hidden;
 }
 .toggle.on { background: var(--accent-blue); }
 .toggle::after {
@@ -308,10 +309,10 @@ button, input[type="range"] {
 
   <!-- Tabs -->
   <div class="tabs">
-    <button class="tab active" data-tab="scanner">Scanner</button>
-    <button class="tab" data-tab="viz">Waveform</button>
-    <button class="tab" data-tab="speakers">Speakers</button>
-    <button class="tab" data-tab="settings">Settings</button>
+    <button class="tab active" data-tab="scanner" onclick="handleTab(this)">Scanner</button>
+    <button class="tab" data-tab="viz" onclick="handleTab(this)">Waveform</button>
+    <button class="tab" data-tab="speakers" onclick="handleTab(this)">Speakers</button>
+    <button class="tab" data-tab="settings" onclick="handleTab(this)">Settings</button>
   </div>
 
   <!-- Scanner Panel -->
@@ -419,56 +420,59 @@ button, input[type="range"] {
     <div class="controls">
       <div class="section-title">Scan Mode</div>
       <div class="mode-selector">
-        <button class="mode-btn active" data-mode="forensic">Forensic</button>
-        <button class="mode-btn" data-mode="voice">Voice ISO</button>
-        <button class="mode-btn" data-mode="wide">Wide Spec</button>
+        <button class="mode-btn active" data-mode="forensic" onclick="handleMode(this)">Forensic</button>
+        <button class="mode-btn" data-mode="voice" onclick="handleMode(this)">Voice ISO</button>
+        <button class="mode-btn" data-mode="wide" onclick="handleMode(this)">Wide Spec</button>
       </div>
       <div class="section-title" style="margin-top:8px">Enhancement</div>
       <div class="control-row">
         <span class="control-label">Noise Reduction</span>
-        <button class="toggle on" id="toggleNR" aria-label="Toggle noise reduction"></button>
+        <button class="toggle on" id="toggleNR" onclick="handleToggle(this)">.</button>
       </div>
       <div class="control-row">
         <span class="control-label">Freq Compensation</span>
-        <button class="toggle on" id="toggleFreq" aria-label="Toggle frequency compensation"></button>
+        <button class="toggle on" id="toggleFreq" onclick="handleToggle(this)">.</button>
       </div>
       <div class="control-row">
         <span class="control-label">Dynamic Range Ctrl</span>
-        <button class="toggle on" id="toggleDRC" aria-label="Toggle dynamic range control"></button>
+        <button class="toggle on" id="toggleDRC" onclick="handleToggle(this)">.</button>
       </div>
       <div class="control-row">
         <span class="control-label">AGC Bypass (Raw)</span>
-        <button class="toggle" id="toggleAGC" aria-label="Toggle AGC bypass"></button>
+        <button class="toggle" id="toggleAGC" onclick="handleToggle(this)">.</button>
       </div>
 
       <div class="section-title" style="margin-top:8px">Scanner</div>
       <div class="control-row">
         <span class="control-label">Voice Transcription</span>
-        <button class="toggle on" id="toggleTranscript" aria-label="Toggle transcription"></button>
+        <button class="toggle on" id="toggleTranscript" onclick="handleToggle(this)">.</button>
       </div>
       <div class="control-row">
         <span class="control-label">Speaker Fingerprint</span>
-        <button class="toggle on" id="toggleFingerprint" aria-label="Toggle fingerprint"></button>
+        <button class="toggle on" id="toggleFingerprint" onclick="handleToggle(this)">.</button>
       </div>
       <div class="control-row">
         <span class="control-label">Auto-Enroll Speakers</span>
-        <button class="toggle on" id="toggleEnroll" aria-label="Toggle auto-enroll"></button>
+        <button class="toggle on" id="toggleEnroll" onclick="handleToggle(this)">.</button>
       </div>
       <div class="control-row">
         <span class="control-label">Bilingual (EN/ES)</span>
-        <button class="toggle on" id="toggleLang" aria-label="Toggle bilingual"></button>
+        <button class="toggle on" id="toggleLang" onclick="handleToggle(this)">.</button>
       </div>
 
       <div class="section-title" style="margin-top:8px">Input Gain</div>
       <div class="control-row">
-        <input type="range" id="gainSlider" min="0" max="300" value="100" style="flex:1;height:4px;-webkit-appearance:none;background:var(--meter-bg);border-radius:2px;outline:none">
+        <input type="range" id="gainSlider" min="0" max="300" value="100" oninput="handleGain(this)" style="flex:1;height:4px;-webkit-appearance:none;background:var(--meter-bg);border-radius:2px;outline:none">
         <span style="font-family:'SF Mono',monospace;font-size:11px;color:var(--text-dim);min-width:40px;text-align:right" id="gainValue">0 dB</span>
       </div>
     </div>
   </div>
 
+  <!-- Debug Log -->
+  <div id="debugLog" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:10px;font-family:'SF Mono',ui-monospace,monospace;font-size:11px;color:var(--accent-amber);max-height:120px;overflow-y:auto;-webkit-overflow-scrolling:touch"></div>
+
   <!-- Main Action Button -->
-  <button class="main-btn btn-start" id="mainBtn">START SCANNING</button>
+  <button class="main-btn btn-start" id="mainBtn" onclick="handleMainBtn()">START SCANNING</button>
 </div>
 
 <script>
@@ -476,26 +480,52 @@ button, input[type="range"] {
 // VOICE FORENSICS LIVE SCANNER
 // ============================================================
 
-const AudioCtx = window.AudioContext || window.webkitAudioContext;
-let ctx, stream, source, analyser, processorNode;
-let isScanning = false;
-let scanStartTime = 0;
-let animFrame = null;
+// Debug logger - visible in UI
+function dbg(msg) {
+  var el = document.getElementById('debugLog');
+  if (!el) return;
+  var line = document.createElement('div');
+  var ts = new Date().toLocaleTimeString('en-US', {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  line.textContent = '[' + ts + '] ' + msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+// Catch all unhandled errors
+window.onerror = function(msg, src, line, col, err) {
+  dbg('ERROR: ' + msg + ' (line ' + line + ')');
+  return false;
+};
+window.onunhandledrejection = function(e) {
+  dbg('PROMISE ERROR: ' + (e.reason ? e.reason.message || e.reason : 'unknown'));
+};
+
+var AudioCtx = window.AudioContext || window.webkitAudioContext;
+var ctx, stream, source, analyser, processorNode;
+var isScanning = false;
+var scanStartTime = 0;
+var animFrame = null;
 
 // Scanner state
-const scanStats = { totalDetections: 0, voiceSegments: 0, uniqueSpeakers: new Set() };
-const speakers = {};  // fingerprint DB
-let detectionLog = [];
-let energyHistory = [];
+var scanStats = { totalDetections: 0, voiceSegments: 0, uniqueSpeakers: new Set() };
+var speakers = {};
+var detectionLog = [];
+var energyHistory = [];
 
 // Settings
-const settings = {
+var settings = {
   noiseReduction: true, freqComp: true, dynamicRange: true, agcBypass: false,
   transcription: true, fingerprint: true, autoEnroll: true, bilingual: true,
   gain: 1.0
 };
 
-const $ = id => document.getElementById(id);
+function $(id) { return document.getElementById(id); }
+
+// Boot check
+dbg('Script loaded OK');
+dbg('AudioContext: ' + (AudioCtx ? 'YES' : 'NO'));
+dbg('getUserMedia: ' + (navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? 'YES' : 'NO'));
+dbg('SpeechRecognition: ' + (window.SpeechRecognition || window.webkitSpeechRecognition ? 'YES' : 'NO'));
 
 // ============================================================
 // SPEAKER FINGERPRINTING (Spectral + MFCC-like)
@@ -824,15 +854,19 @@ registerProcessor('scan-processor', ScanProcessor);
 `;
 
 async function startScanning() {
+  dbg('startScanning() called');
   try {
-    // iOS Safari requires AudioContext creation inside a user gesture
-    ctx = new AudioCtx({ sampleRate: 48000 });
+    dbg('Creating AudioContext...');
+    ctx = new AudioCtx();
+    dbg('AudioContext created, state: ' + ctx.state + ', rate: ' + ctx.sampleRate);
 
-    // iOS Safari: must resume AudioContext from user gesture
     if (ctx.state === 'suspended') {
+      dbg('Resuming suspended AudioContext...');
       await ctx.resume();
+      dbg('AudioContext resumed, state: ' + ctx.state);
     }
 
+    dbg('Requesting microphone...');
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: !settings.agcBypass,
@@ -841,14 +875,16 @@ async function startScanning() {
         channelCount: 1
       }
     });
+    dbg('Microphone granted, tracks: ' + stream.getAudioTracks().length);
 
     source = ctx.createMediaStreamSource(stream);
     analyser = ctx.createAnalyser();
     analyser.fftSize = 4096;
     analyser.smoothingTimeConstant = 0.7;
 
-    // Audio processing via AudioWorklet (or fallback for older iOS)
+    // Audio processing via AudioWorklet (or fallback)
     try {
+      dbg('Trying AudioWorklet...');
       var blob = new Blob([processorCode], { type: 'application/javascript' });
       var url = URL.createObjectURL(blob);
       await ctx.audioWorklet.addModule(url);
@@ -857,8 +893,9 @@ async function startScanning() {
       processorNode.port.postMessage(settings);
       source.connect(processorNode);
       processorNode.connect(analyser);
+      dbg('AudioWorklet DSP active');
     } catch(e) {
-      // Fallback: connect directly (no DSP, just analysis)
+      dbg('AudioWorklet failed: ' + e.message + ' - using direct connection');
       source.connect(analyser);
     }
 
@@ -867,15 +904,17 @@ async function startScanning() {
     updateMainUI();
     resizeCanvases();
 
-    // Start speech recognition
-    if (settings.transcription) startSpeechRecognition();
+    if (settings.transcription) {
+      dbg('Starting speech recognition...');
+      startSpeechRecognition();
+    }
 
-    // Start analysis loop
     scanLoop();
-
     $('headerMeta').textContent = (ctx.sampleRate/1000).toFixed(0) + 'kHz SCANNING';
+    dbg('SCANNING ACTIVE');
   } catch(e) {
-    alert('Microphone access required. Please allow microphone permission and try again.\n\n' + e.message);
+    dbg('FATAL: ' + e.name + ': ' + e.message);
+    $('headerMeta').textContent = 'ERROR: ' + e.message;
   }
 }
 
@@ -1183,106 +1222,84 @@ function drawViz() {
 }
 
 // ============================================================
-// UI CONTROLS (iOS Safari compatible)
+// UI CONTROLS (iOS Safari compatible — onclick handlers)
 // ============================================================
 
 function updateMainUI() {
-  const dot = $('statusDot');
-  const btn = $('mainBtn');
+  var dot = $('statusDot');
+  var btn = $('mainBtn');
   if (isScanning) {
     dot.className = 'status-dot scanning';
     btn.textContent = 'STOP SCANNING';
     btn.className = 'main-btn btn-stop';
+    btn.setAttribute('onclick', 'handleMainBtn()');
   } else {
     dot.className = 'status-dot';
     btn.textContent = 'START SCANNING';
     btn.className = 'main-btn btn-start';
+    btn.setAttribute('onclick', 'handleMainBtn()');
   }
 }
 
-// iOS Safari fix: use touchend with preventDefault to avoid 300ms delay
-// and double-firing. Fall back to click for non-touch devices.
-function onTap(el, handler) {
-  let touched = false;
-  el.addEventListener('touchend', function(e) {
-    e.preventDefault();
-    touched = true;
-    handler(e);
-  }, { passive: false });
-  el.addEventListener('click', function(e) {
-    if (!touched) handler(e);
-    touched = false;
-  });
+// Global handlers called from onclick attributes
+function handleMainBtn() {
+  dbg('Main button tapped, isScanning=' + isScanning);
+  if (isScanning) { stopScanning(); } else { startScanning(); }
 }
 
-// Main scan button
-onTap($('mainBtn'), function() {
-  if (isScanning) stopScanning(); else startScanning();
-});
+function handleTab(tabEl) {
+  dbg('Tab tapped: ' + tabEl.getAttribute('data-tab'));
+  var tabs = document.querySelectorAll('.tab');
+  var panels = document.querySelectorAll('.panel');
+  for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+  for (var i = 0; i < panels.length; i++) panels[i].classList.remove('active');
+  tabEl.classList.add('active');
+  var panelId = 'panel-' + tabEl.getAttribute('data-tab');
+  var panel = document.getElementById(panelId);
+  if (panel) panel.classList.add('active');
+  setTimeout(resizeCanvases, 50);
+}
 
-// Tabs
-document.querySelectorAll('.tab').forEach(function(tab) {
-  onTap(tab, function() {
-    document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
-    document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
-    tab.classList.add('active');
-    var panelId = 'panel-' + tab.getAttribute('data-tab');
-    var panel = document.getElementById(panelId);
-    if (panel) panel.classList.add('active');
-    setTimeout(resizeCanvases, 50);
-  });
-});
+function handleToggle(btn) {
+  btn.classList.toggle('on');
+  var on = btn.classList.contains('on');
+  dbg('Toggle ' + btn.id + ' = ' + on);
+  switch(btn.id) {
+    case 'toggleNR': settings.noiseReduction = on; break;
+    case 'toggleFreq': settings.freqComp = on; break;
+    case 'toggleDRC': settings.dynamicRange = on; break;
+    case 'toggleAGC': settings.agcBypass = on; break;
+    case 'toggleTranscript':
+      settings.transcription = on;
+      if (on && isScanning) startSpeechRecognition();
+      else if (!on && recognition) { recognition.abort(); recognition = null; }
+      break;
+    case 'toggleFingerprint': settings.fingerprint = on; break;
+    case 'toggleEnroll': settings.autoEnroll = on; break;
+    case 'toggleLang': settings.bilingual = on; break;
+  }
+  if (processorNode) processorNode.port.postMessage(settings);
+}
 
-// Toggles
-document.querySelectorAll('.toggle').forEach(function(btn) {
-  onTap(btn, function() {
-    btn.classList.toggle('on');
-    var on = btn.classList.contains('on');
-    switch(btn.id) {
-      case 'toggleNR': settings.noiseReduction = on; break;
-      case 'toggleFreq': settings.freqComp = on; break;
-      case 'toggleDRC': settings.dynamicRange = on; break;
-      case 'toggleAGC': settings.agcBypass = on; break;
-      case 'toggleTranscript':
-        settings.transcription = on;
-        if (on && isScanning) startSpeechRecognition();
-        else if (!on && recognition) { recognition.abort(); recognition = null; }
-        break;
-      case 'toggleFingerprint': settings.fingerprint = on; break;
-      case 'toggleEnroll': settings.autoEnroll = on; break;
-      case 'toggleLang': settings.bilingual = on; break;
-    }
-    if (processorNode) processorNode.port.postMessage(settings);
-  });
-});
+function handleMode(btn) {
+  var btns = document.querySelectorAll('.mode-btn');
+  for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+  btn.classList.add('active');
+  var mode = btn.getAttribute('data-mode');
+  dbg('Mode: ' + mode);
+  if (mode === 'forensic') { settings.agcBypass = true; settings.noiseReduction = true; }
+  else if (mode === 'voice') { settings.agcBypass = false; settings.noiseReduction = true; }
+  else { settings.agcBypass = true; settings.noiseReduction = false; }
+  if (processorNode) processorNode.port.postMessage(settings);
+}
 
-// Mode buttons
-document.querySelectorAll('.mode-btn').forEach(function(btn) {
-  onTap(btn, function() {
-    document.querySelectorAll('.mode-btn').forEach(function(b) { b.classList.remove('active'); });
-    btn.classList.add('active');
-    var mode = btn.getAttribute('data-mode');
-    if (mode === 'forensic') {
-      settings.agcBypass = true;
-      settings.noiseReduction = true;
-    } else if (mode === 'voice') {
-      settings.agcBypass = false;
-      settings.noiseReduction = true;
-    } else {
-      settings.agcBypass = true;
-      settings.noiseReduction = false;
-    }
-    if (processorNode) processorNode.port.postMessage(settings);
-  });
-});
-
-// Gain slider - works natively on iOS
-$('gainSlider').addEventListener('input', function(e) {
-  settings.gain = e.target.value / 100;
+function handleGain(el) {
+  settings.gain = el.value / 100;
   var db = settings.gain > 0 ? (20 * Math.log10(settings.gain)).toFixed(1) : '-inf';
   $('gainValue').textContent = db + ' dB';
   if (processorNode) processorNode.port.postMessage(settings);
-});
+}
 
 resizeCanvases();
+dbg('UI handlers registered');
 </script>
