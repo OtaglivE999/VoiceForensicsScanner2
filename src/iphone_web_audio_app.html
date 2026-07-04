@@ -1,8 +1,8 @@
-<title>VoiceForensics - iPhone Mic Enhancer</title>
+<title>VoiceForensics - Live Scanner</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="MicEnhance">
+<meta name="apple-mobile-web-app-title" content="VoiceScanner">
 <style>
 :root {
   --bg-deep: #060A12;
@@ -17,14 +17,18 @@
   --accent-amber: #F59E0B;
   --accent-green: #10B981;
   --accent-red: #EF4444;
+  --accent-purple: #A78BFA;
   --meter-fill: #0EA5E9;
   --meter-bg: #1E293B;
+  --zone-near: #10B981;
+  --zone-medium: #38BDF8;
+  --zone-far: #F59E0B;
+  --zone-ultra: #EF4444;
   font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
   font-size: 16px;
   color: var(--text-primary);
   background: var(--bg-deep);
 }
-
 @media (prefers-color-scheme: light) {
   :root {
     --bg-deep: #F1F5F9;
@@ -38,24 +42,14 @@
   }
 }
 :root[data-theme="light"] {
-  --bg-deep: #F1F5F9;
-  --bg-panel: #FFFFFF;
-  --bg-card: #F8FAFC;
-  --border: #CBD5E1;
-  --text-primary: #0F172A;
-  --text-secondary: #475569;
-  --text-dim: #94A3B8;
-  --meter-bg: #E2E8F0;
+  --bg-deep: #F1F5F9; --bg-panel: #FFFFFF; --bg-card: #F8FAFC;
+  --border: #CBD5E1; --text-primary: #0F172A; --text-secondary: #475569;
+  --text-dim: #94A3B8; --meter-bg: #E2E8F0;
 }
 :root[data-theme="dark"] {
-  --bg-deep: #060A12;
-  --bg-panel: #0C1220;
-  --bg-card: #111827;
-  --border: #1E293B;
-  --text-primary: #E2E8F0;
-  --text-secondary: #94A3B8;
-  --text-dim: #475569;
-  --meter-bg: #1E293B;
+  --bg-deep: #060A12; --bg-panel: #0C1220; --bg-card: #111827;
+  --border: #1E293B; --text-primary: #E2E8F0; --text-secondary: #94A3B8;
+  --text-dim: #475569; --meter-bg: #1E293B;
 }
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
@@ -73,242 +67,206 @@ body {
   display: flex;
   flex-direction: column;
   min-height: 100dvh;
-  max-width: 480px;
+  max-width: 520px;
   margin: 0 auto;
-  padding: 12px;
-  gap: 10px;
-}
-
-.status-bar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-}
-.status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
-}
-.status-dot {
-  width: 8px; height: 8px;
-  border-radius: 50%;
-  background: var(--text-dim);
-  transition: background 0.3s;
-}
-.status-dot.active { background: var(--accent-green); box-shadow: 0 0 6px var(--accent-green); }
-.status-dot.recording { background: var(--accent-red); box-shadow: 0 0 6px var(--accent-red); animation: pulse 1.2s infinite; }
-@keyframes pulse { 50% { opacity: 0.5; } }
-.status-meta {
-  font-family: 'SF Mono', ui-monospace, monospace;
-  font-size: 11px;
-  color: var(--text-dim);
-}
-
-.viz-panel {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
   padding: 10px;
-  flex: 1;
-  min-height: 180px;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
-.viz-panel canvas {
-  width: 100%;
-  flex: 1;
-  border-radius: 6px;
-  background: var(--bg-deep);
+
+/* Header */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+}
+.header-left { display: flex; align-items: center; gap: 8px; }
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--text-dim); transition: background 0.3s;
+}
+.status-dot.scanning { background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); animation: pulse 1.5s infinite; }
+@keyframes pulse { 50% { opacity: 0.5; } }
+.header-title { font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
+.header-meta {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 10px; color: var(--text-dim);
+}
+
+/* Tabs */
+.tabs {
+  display: flex; gap: 4px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 4px;
+}
+.tab {
+  flex: 1; padding: 7px 4px; border: none; border-radius: 7px;
+  background: transparent; color: var(--text-dim);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; cursor: pointer;
+  -webkit-tap-highlight-color: transparent; transition: all 0.15s;
+}
+.tab.active { background: var(--bg-card); color: var(--accent-blue); }
+
+/* Panels */
+.panel { display: none; flex-direction: column; gap: 8px; flex: 1; }
+.panel.active { display: flex; }
+
+/* Scanner Feed */
+.scanner-feed {
+  flex: 1; min-height: 280px; overflow-y: auto; overflow-x: hidden;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 8px; -webkit-overflow-scrolling: touch;
+}
+.feed-empty {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; color: var(--text-dim); font-size: 13px; text-align: center;
+  padding: 20px;
+}
+.detection-entry {
+  padding: 8px 10px; border-radius: 8px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  margin-bottom: 6px; font-size: 12px; animation: slideIn 0.2s ease;
+}
+@keyframes slideIn { from { opacity: 0; transform: translateY(-4px); } }
+.detection-header {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+}
+.detection-time {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 10px; color: var(--text-dim);
+}
+.detection-speaker {
+  font-weight: 700; font-size: 12px;
+}
+.detection-badge {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.06em;
+  padding: 2px 6px; border-radius: 4px; text-transform: uppercase;
+}
+.badge-verified { background: rgba(16,185,129,0.15); color: var(--accent-green); }
+.badge-partial { background: rgba(251,191,36,0.15); color: var(--accent-amber); }
+.badge-new { background: rgba(56,189,248,0.15); color: var(--accent-blue); }
+.zone-badge {
+  font-size: 9px; font-weight: 700; padding: 2px 5px; border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+.zone-near { background: rgba(16,185,129,0.15); color: var(--zone-near); }
+.zone-medium { background: rgba(56,189,248,0.15); color: var(--zone-medium); }
+.zone-far { background: rgba(245,158,11,0.15); color: var(--zone-far); }
+.zone-ultra { background: rgba(239,68,68,0.15); color: var(--zone-ultra); }
+.detection-metrics {
+  display: flex; gap: 10px; font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 10px; color: var(--text-dim); margin-top: 3px;
+}
+.detection-transcript {
+  margin-top: 4px; font-size: 12px; color: var(--text-secondary);
+  font-style: italic; padding-left: 4px;
+  border-left: 2px solid var(--border);
+}
+.detection-biometrics {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 9px; color: var(--accent-cyan); margin-top: 4px;
+}
+
+/* Viz panel */
+.viz-section {
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 8px; display: flex; flex-direction: column; gap: 4px;
+}
+.viz-section canvas {
+  width: 100%; height: 70px; border-radius: 6px; background: var(--bg-deep);
 }
 .viz-label {
-  font-size: 10px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-dim);
+  font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-dim);
 }
 
-.meters {
-  display: grid;
-  grid-template-columns: 1fr 1fr 1fr;
-  gap: 8px;
-}
+/* Meters row */
+.meters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .meter-card {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 10px;
-  padding: 10px 8px;
-  text-align: center;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 4px; text-align: center;
 }
 .meter-value {
   font-family: 'SF Mono', ui-monospace, monospace;
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--accent-cyan);
-  line-height: 1.2;
+  font-size: 15px; font-weight: 700; color: var(--accent-cyan); line-height: 1.2;
 }
 .meter-label {
-  font-size: 9px;
-  font-weight: 700;
-  letter-spacing: 0.1em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  margin-top: 2px;
+  font-size: 8px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-dim); margin-top: 1px;
 }
-.meter-bar {
-  margin-top: 6px;
-  height: 3px;
-  background: var(--meter-bg);
-  border-radius: 2px;
-  overflow: hidden;
-}
-.meter-bar-fill {
-  height: 100%;
-  border-radius: 2px;
-  background: var(--meter-fill);
-  transition: width 0.1s;
-  width: 0%;
-}
+.meter-bar { margin-top: 4px; height: 3px; background: var(--meter-bg); border-radius: 2px; overflow: hidden; }
+.meter-bar-fill { height: 100%; border-radius: 2px; background: var(--meter-fill); transition: width 0.1s; width: 0%; }
 
+/* Stats */
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.stat-card {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px;
+}
+.stat-value {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 20px; font-weight: 700; color: var(--accent-blue);
+}
+.stat-label { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+/* Controls */
 .controls {
-  background: var(--bg-panel);
-  border: 1px solid var(--border);
-  border-radius: 12px;
-  padding: 14px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px;
 }
-.control-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-.control-label {
-  font-size: 13px;
-  font-weight: 500;
-  color: var(--text-secondary);
-}
+.control-row { display: flex; align-items: center; justify-content: space-between; }
+.control-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
 .toggle {
-  position: relative;
-  width: 44px; height: 24px;
-  background: var(--meter-bg);
-  border-radius: 12px;
-  cursor: pointer;
-  transition: background 0.2s;
-  border: none;
-  outline: none;
-  -webkit-tap-highlight-color: transparent;
+  position: relative; width: 40px; height: 22px;
+  background: var(--meter-bg); border-radius: 11px;
+  cursor: pointer; border: none; outline: none;
+  -webkit-tap-highlight-color: transparent; transition: background 0.2s;
 }
 .toggle.on { background: var(--accent-blue); }
 .toggle::after {
-  content: '';
-  position: absolute;
-  top: 2px; left: 2px;
-  width: 20px; height: 20px;
-  border-radius: 50%;
-  background: white;
-  transition: transform 0.2s;
+  content: ''; position: absolute; top: 2px; left: 2px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: white; transition: transform 0.2s;
   box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
-.toggle.on::after { transform: translateX(20px); }
-
-.gain-slider {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.gain-slider input[type="range"] {
-  flex: 1;
-  height: 4px;
-  -webkit-appearance: none;
-  appearance: none;
-  background: var(--meter-bg);
-  border-radius: 2px;
-  outline: none;
-}
-.gain-slider input[type="range"]::-webkit-slider-thumb {
-  -webkit-appearance: none;
-  width: 20px; height: 20px;
-  border-radius: 50%;
-  background: var(--accent-blue);
-  box-shadow: 0 1px 4px rgba(0,0,0,0.3);
-}
-.gain-value {
-  font-family: 'SF Mono', ui-monospace, monospace;
-  font-size: 12px;
-  color: var(--text-dim);
-  min-width: 36px;
-  text-align: right;
-}
-
-.main-btn {
-  width: 100%;
-  padding: 14px;
-  border: none;
-  border-radius: 12px;
-  font-size: 15px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-  cursor: pointer;
-  transition: all 0.2s;
-  -webkit-tap-highlight-color: transparent;
-}
-.btn-start {
-  background: var(--accent-blue);
-  color: #fff;
-}
-.btn-start:active { transform: scale(0.97); background: #0284C7; }
-.btn-stop {
-  background: var(--accent-red);
-  color: #fff;
-}
-.btn-stop:active { transform: scale(0.97); }
-.btn-record {
-  background: var(--bg-card);
-  border: 2px solid var(--accent-amber);
-  color: var(--accent-amber);
-}
-
-.mode-selector {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-}
-.mode-btn {
-  padding: 8px 4px;
-  border: 1px solid var(--border);
-  border-radius: 8px;
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  font-size: 11px;
-  font-weight: 600;
-  text-align: center;
-  cursor: pointer;
-  transition: all 0.15s;
-  -webkit-tap-highlight-color: transparent;
-}
-.mode-btn.active {
-  border-color: var(--accent-blue);
-  background: rgba(56, 189, 248, 0.1);
-  color: var(--accent-blue);
-}
+.toggle.on::after { transform: translateX(18px); }
 
 .section-title {
-  font-size: 11px;
-  font-weight: 700;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-  color: var(--text-dim);
-  margin-bottom: 4px;
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-dim);
+}
+
+/* Main button */
+.main-btn {
+  width: 100%; padding: 14px; border: none; border-radius: 12px;
+  font-size: 14px; font-weight: 700; letter-spacing: 0.03em;
+  cursor: pointer; transition: all 0.2s;
+  -webkit-tap-highlight-color: transparent;
+}
+.btn-start { background: var(--accent-green); color: #fff; }
+.btn-start:active { transform: scale(0.97); }
+.btn-stop { background: var(--accent-red); color: #fff; }
+.btn-stop:active { transform: scale(0.97); }
+
+/* Speakers panel */
+.speaker-list { display: flex; flex-direction: column; gap: 6px; }
+.speaker-card {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 12px;
+  display: flex; align-items: center; gap: 10px;
+}
+.speaker-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700; color: white;
+}
+.speaker-info { flex: 1; }
+.speaker-name { font-size: 13px; font-weight: 700; }
+.speaker-detail { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+.speaker-conf {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 12px; font-weight: 700;
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -317,102 +275,772 @@ body {
 </style>
 
 <div class="app">
-  <div class="status-bar">
-    <div class="status-indicator">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
       <div class="status-dot" id="statusDot"></div>
-      <span id="statusText">IDLE</span>
+      <span class="header-title" id="statusText">VOICE FORENSICS SCANNER</span>
     </div>
-    <div class="status-meta" id="statusMeta">48kHz / 32-bit</div>
+    <div class="header-meta" id="headerMeta">IDLE</div>
   </div>
 
-  <div class="viz-panel">
-    <span class="viz-label">Waveform</span>
-    <canvas id="waveCanvas"></canvas>
-    <span class="viz-label">Spectrum</span>
-    <canvas id="specCanvas"></canvas>
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" data-tab="scanner">Scanner</button>
+    <button class="tab" data-tab="viz">Waveform</button>
+    <button class="tab" data-tab="speakers">Speakers</button>
+    <button class="tab" data-tab="settings">Settings</button>
   </div>
 
-  <div class="meters">
-    <div class="meter-card">
-      <div class="meter-value" id="rmsVal">--</div>
-      <div class="meter-label">RMS dB</div>
-      <div class="meter-bar"><div class="meter-bar-fill" id="rmsFill"></div></div>
+  <!-- Scanner Panel -->
+  <div class="panel active" id="panel-scanner">
+    <div class="meters">
+      <div class="meter-card">
+        <div class="meter-value" id="mSnr">--</div>
+        <div class="meter-label">SNR dB</div>
+        <div class="meter-bar"><div class="meter-bar-fill" id="mSnrFill"></div></div>
+      </div>
+      <div class="meter-card">
+        <div class="meter-value" id="mZone">--</div>
+        <div class="meter-label">Zone</div>
+        <div class="meter-bar"><div class="meter-bar-fill" id="mZoneFill" style="background:var(--accent-green)"></div></div>
+      </div>
+      <div class="meter-card">
+        <div class="meter-value" id="mVoice">--</div>
+        <div class="meter-label">Voice %</div>
+        <div class="meter-bar"><div class="meter-bar-fill" id="mVoiceFill"></div></div>
+      </div>
+      <div class="meter-card">
+        <div class="meter-value" id="mSpkrs">0</div>
+        <div class="meter-label">Speakers</div>
+        <div class="meter-bar"><div class="meter-bar-fill" id="mSpkrFill" style="background:var(--accent-purple)"></div></div>
+      </div>
     </div>
-    <div class="meter-card">
-      <div class="meter-value" id="peakVal">--</div>
-      <div class="meter-label">Peak dB</div>
-      <div class="meter-bar"><div class="meter-bar-fill" id="peakFill"></div></div>
-    </div>
-    <div class="meter-card">
-      <div class="meter-value" id="snrVal">--</div>
-      <div class="meter-label">SNR dB</div>
-      <div class="meter-bar"><div class="meter-bar-fill" id="snrFill"></div></div>
-    </div>
-  </div>
-
-  <div class="controls">
-    <div class="section-title">Enhancement Mode</div>
-    <div class="mode-selector">
-      <button class="mode-btn active" data-mode="forensic">Forensic</button>
-      <button class="mode-btn" data-mode="voice">Voice ISO</button>
-      <button class="mode-btn" data-mode="wide">Wide Spec</button>
-    </div>
-
-    <div class="section-title" style="margin-top:8px">Processing</div>
-    <div class="control-row">
-      <span class="control-label">Noise Reduction</span>
-      <button class="toggle on" id="toggleNR" aria-label="Toggle noise reduction"></button>
-    </div>
-    <div class="control-row">
-      <span class="control-label">Freq Compensation</span>
-      <button class="toggle on" id="toggleFreq" aria-label="Toggle frequency compensation"></button>
-    </div>
-    <div class="control-row">
-      <span class="control-label">Dynamic Range</span>
-      <button class="toggle on" id="toggleDRC" aria-label="Toggle dynamic range control"></button>
-    </div>
-    <div class="control-row">
-      <span class="control-label">AGC Bypass</span>
-      <button class="toggle" id="toggleAGC" aria-label="Toggle AGC bypass"></button>
-    </div>
-
-    <div class="section-title" style="margin-top:8px">Input Gain</div>
-    <div class="gain-slider">
-      <input type="range" id="gainSlider" min="0" max="200" value="100">
-      <span class="gain-value" id="gainValue">0 dB</span>
+    <div class="scanner-feed" id="scannerFeed">
+      <div class="feed-empty" id="feedEmpty">
+        Tap START SCANNING to begin real-time voice detection.<br><br>
+        Field Detection (SNR to Distance):<br>
+        NEAR: 35dB+ (0-1m)<br>
+        MEDIUM: 25-35dB (1-3m)<br>
+        FAR: 15-25dB (3-6m)<br>
+        ULTRA-FAR: &lt;15dB (6m+)
+      </div>
     </div>
   </div>
 
-  <button class="main-btn btn-start" id="mainBtn">START MICROPHONE</button>
-  <button class="main-btn btn-record" id="recordBtn" style="display:none">RECORD ENHANCED AUDIO</button>
+  <!-- Visualization Panel -->
+  <div class="panel" id="panel-viz">
+    <div class="viz-section">
+      <span class="viz-label">Waveform</span>
+      <canvas id="waveCanvas"></canvas>
+    </div>
+    <div class="viz-section">
+      <span class="viz-label">Frequency Spectrum</span>
+      <canvas id="specCanvas"></canvas>
+    </div>
+    <div class="viz-section">
+      <span class="viz-label">Voice Energy (20-frame history)</span>
+      <canvas id="energyCanvas"></canvas>
+    </div>
+    <div class="meters">
+      <div class="meter-card">
+        <div class="meter-value" id="mRms">--</div>
+        <div class="meter-label">RMS dB</div>
+        <div class="meter-bar"><div class="meter-bar-fill" id="mRmsFill"></div></div>
+      </div>
+      <div class="meter-card">
+        <div class="meter-value" id="mPeak">--</div>
+        <div class="meter-label">Peak dB</div>
+        <div class="meter-bar"><div class="meter-bar-fill" id="mPeakFill"></div></div>
+      </div>
+      <div class="meter-card">
+        <div class="meter-value" id="mFreq">--</div>
+        <div class="meter-label">F0 Hz</div>
+        <div class="meter-bar"><div class="meter-bar-fill" id="mFreqFill"></div></div>
+      </div>
+      <div class="meter-card">
+        <div class="meter-value" id="mZcr">--</div>
+        <div class="meter-label">ZCR</div>
+        <div class="meter-bar"><div class="meter-bar-fill" id="mZcrFill"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Speakers Panel -->
+  <div class="panel" id="panel-speakers">
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="statTotal">0</div>
+        <div class="stat-label">Total Detections</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statSpeakers">0</div>
+        <div class="stat-label">Unique Speakers</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statVoice">0</div>
+        <div class="stat-label">Voice Segments</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statDuration">0s</div>
+        <div class="stat-label">Scan Duration</div>
+      </div>
+    </div>
+    <div class="section-title" style="margin-top:4px">Identified Speakers</div>
+    <div class="speaker-list" id="speakerList">
+      <div class="feed-empty">No speakers detected yet</div>
+    </div>
+  </div>
+
+  <!-- Settings Panel -->
+  <div class="panel" id="panel-settings">
+    <div class="controls">
+      <div class="section-title">Enhancement</div>
+      <div class="control-row">
+        <span class="control-label">Noise Reduction</span>
+        <button class="toggle on" id="toggleNR" aria-label="Toggle noise reduction"></button>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Freq Compensation</span>
+        <button class="toggle on" id="toggleFreq" aria-label="Toggle frequency compensation"></button>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Dynamic Range Ctrl</span>
+        <button class="toggle on" id="toggleDRC" aria-label="Toggle dynamic range control"></button>
+      </div>
+      <div class="control-row">
+        <span class="control-label">AGC Bypass (Raw)</span>
+        <button class="toggle" id="toggleAGC" aria-label="Toggle AGC bypass"></button>
+      </div>
+
+      <div class="section-title" style="margin-top:8px">Scanner</div>
+      <div class="control-row">
+        <span class="control-label">Voice Transcription</span>
+        <button class="toggle on" id="toggleTranscript" aria-label="Toggle transcription"></button>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Speaker Fingerprint</span>
+        <button class="toggle on" id="toggleFingerprint" aria-label="Toggle fingerprint"></button>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Auto-Enroll Speakers</span>
+        <button class="toggle on" id="toggleEnroll" aria-label="Toggle auto-enroll"></button>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Bilingual (EN/ES)</span>
+        <button class="toggle on" id="toggleLang" aria-label="Toggle bilingual"></button>
+      </div>
+
+      <div class="section-title" style="margin-top:8px">Input Gain</div>
+      <div class="control-row">
+        <input type="range" id="gainSlider" min="0" max="300" value="100" style="flex:1;height:4px;-webkit-appearance:none;background:var(--meter-bg);border-radius:2px;outline:none">
+        <span style="font-family:'SF Mono',monospace;font-size:11px;color:var(--text-dim);min-width:40px;text-align:right" id="gainValue">0 dB</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main Action Button -->
+  <button class="main-btn btn-start" id="mainBtn">START SCANNING</button>
 </div>
 
 <script>
-const AudioCtx = window.AudioContext || window.webkitAudioContext;
-let ctx, stream, source, analyser, workletNode, scriptNode;
-let isRunning = false, isRecording = false;
-let recordedChunks = [];
-let noiseProfile = null;
-let frameCount = 0;
+// ============================================================
+// VOICE FORENSICS LIVE SCANNER
+// ============================================================
 
+const AudioCtx = window.AudioContext || window.webkitAudioContext;
+let ctx, stream, source, analyser, processorNode;
+let isScanning = false;
+let scanStartTime = 0;
+let animFrame = null;
+
+// Scanner state
+const scanStats = { totalDetections: 0, voiceSegments: 0, uniqueSpeakers: new Set() };
+const speakers = {};  // fingerprint DB
+let detectionLog = [];
+let energyHistory = [];
+
+// Settings
 const settings = {
-  mode: 'forensic',
-  noiseReduction: true,
-  freqCompensation: true,
-  dynamicRange: true,
-  agcBypass: false,
+  noiseReduction: true, freqComp: true, dynamicRange: true, agcBypass: false,
+  transcription: true, fingerprint: true, autoEnroll: true, bilingual: true,
   gain: 1.0
 };
 
 const $ = id => document.getElementById(id);
+
+// ============================================================
+// SPEAKER FINGERPRINTING (Spectral + MFCC-like)
+// ============================================================
+
+class VoiceFingerprint {
+  constructor() {
+    this.speakers = {};
+    this.nextId = 1;
+    this.minConfidence = 0.65;
+  }
+
+  extractFeatures(freqData, timeData, sampleRate) {
+    const features = {};
+
+    // Spectral centroid
+    let weightedSum = 0, totalEnergy = 0;
+    for (let i = 0; i < freqData.length; i++) {
+      const mag = freqData[i] / 255;
+      weightedSum += i * mag;
+      totalEnergy += mag;
+    }
+    features.centroid = totalEnergy > 0 ? weightedSum / totalEnergy : 0;
+
+    // Spectral spread
+    let spreadSum = 0;
+    for (let i = 0; i < freqData.length; i++) {
+      const mag = freqData[i] / 255;
+      spreadSum += mag * Math.pow(i - features.centroid, 2);
+    }
+    features.spread = totalEnergy > 0 ? Math.sqrt(spreadSum / totalEnergy) : 0;
+
+    // Spectral flatness
+    let geoSum = 0, arithSum = 0;
+    const n = freqData.length;
+    for (let i = 1; i < n; i++) {
+      const mag = Math.max(freqData[i] / 255, 1e-10);
+      geoSum += Math.log(mag);
+      arithSum += mag;
+    }
+    features.flatness = arithSum > 0 ? Math.exp(geoSum / (n-1)) / (arithSum / (n-1)) : 0;
+
+    // Spectral rolloff (85%)
+    let cumEnergy = 0;
+    const rolloffThresh = totalEnergy * 0.85;
+    features.rolloff = n;
+    for (let i = 0; i < n; i++) {
+      cumEnergy += freqData[i] / 255;
+      if (cumEnergy >= rolloffThresh) { features.rolloff = i; break; }
+    }
+
+    // MFCC-like: energy in mel-scale bands (13 bands)
+    features.mfcc = [];
+    const numBands = 13;
+    for (let b = 0; b < numBands; b++) {
+      const lo = Math.floor(Math.pow(b / numBands, 1.5) * n);
+      const hi = Math.floor(Math.pow((b+1) / numBands, 1.5) * n);
+      let bandEnergy = 0;
+      for (let i = lo; i < hi && i < n; i++) bandEnergy += freqData[i] / 255;
+      features.mfcc.push(bandEnergy / Math.max(1, hi - lo));
+    }
+
+    // Pitch estimate (autocorrelation on time domain)
+    features.pitch = this.estimatePitch(timeData, sampleRate);
+
+    // Zero-crossing rate
+    let zcr = 0;
+    for (let i = 1; i < timeData.length; i++) {
+      if ((timeData[i] >= 0 && timeData[i-1] < 0) || (timeData[i] < 0 && timeData[i-1] >= 0)) zcr++;
+    }
+    features.zcr = zcr / timeData.length;
+
+    return features;
+  }
+
+  estimatePitch(timeData, sampleRate) {
+    const minLag = Math.floor(sampleRate / 500); // 500Hz max
+    const maxLag = Math.floor(sampleRate / 60);  // 60Hz min
+    const n = Math.min(timeData.length, 2048);
+    let bestCorr = 0, bestLag = 0;
+
+    for (let lag = minLag; lag < Math.min(maxLag, n / 2); lag++) {
+      let corr = 0;
+      for (let i = 0; i < n - lag; i++) {
+        corr += timeData[i] * timeData[i + lag];
+      }
+      corr /= (n - lag);
+      if (corr > bestCorr) { bestCorr = corr; bestLag = lag; }
+    }
+    return bestLag > 0 ? sampleRate / bestLag : 0;
+  }
+
+  match(features) {
+    let bestId = null, bestScore = 0;
+
+    for (const [id, profile] of Object.entries(this.speakers)) {
+      const score = this.compareFeatures(features, profile.avgFeatures);
+      if (score > bestScore) { bestScore = score; bestId = id; }
+    }
+
+    if (bestScore >= this.minConfidence && bestId) {
+      // Update rolling average
+      const prof = this.speakers[bestId];
+      prof.detections++;
+      this.updateAverage(prof.avgFeatures, features, prof.detections);
+      return { id: bestId, name: prof.name, confidence: bestScore, verified: bestScore > 0.80, detections: prof.detections };
+    }
+    return null;
+  }
+
+  enroll(features) {
+    const id = `SPK_${String(this.nextId++).padStart(3, '0')}`;
+    this.speakers[id] = {
+      name: `Speaker ${Object.keys(this.speakers).length + 1}`,
+      avgFeatures: { ...features, mfcc: [...features.mfcc] },
+      detections: 1,
+      firstSeen: Date.now(),
+      lastSeen: Date.now()
+    };
+    return { id, name: this.speakers[id].name, confidence: 1.0, verified: false, detections: 1 };
+  }
+
+  compareFeatures(a, b) {
+    let score = 0, weights = 0;
+
+    // MFCC similarity (highest weight)
+    if (a.mfcc && b.mfcc) {
+      let mfccSim = 0;
+      for (let i = 0; i < Math.min(a.mfcc.length, b.mfcc.length); i++) {
+        const diff = Math.abs(a.mfcc[i] - b.mfcc[i]);
+        mfccSim += Math.max(0, 1 - diff * 4);
+      }
+      mfccSim /= a.mfcc.length;
+      score += mfccSim * 5; weights += 5;
+    }
+
+    // Spectral centroid
+    const centDiff = Math.abs(a.centroid - b.centroid) / Math.max(a.centroid, b.centroid, 1);
+    score += Math.max(0, 1 - centDiff * 3) * 2; weights += 2;
+
+    // Spectral spread
+    const spreadDiff = Math.abs(a.spread - b.spread) / Math.max(a.spread, b.spread, 1);
+    score += Math.max(0, 1 - spreadDiff * 3) * 1.5; weights += 1.5;
+
+    // Pitch
+    if (a.pitch > 0 && b.pitch > 0) {
+      const pitchRatio = Math.min(a.pitch, b.pitch) / Math.max(a.pitch, b.pitch);
+      score += pitchRatio * 2; weights += 2;
+    }
+
+    // Rolloff
+    const rollDiff = Math.abs(a.rolloff - b.rolloff) / Math.max(a.rolloff, b.rolloff, 1);
+    score += Math.max(0, 1 - rollDiff * 2) * 1; weights += 1;
+
+    return weights > 0 ? score / weights : 0;
+  }
+
+  updateAverage(avg, newF, count) {
+    const alpha = 1 / Math.min(count, 20);
+    avg.centroid = (1-alpha) * avg.centroid + alpha * newF.centroid;
+    avg.spread = (1-alpha) * avg.spread + alpha * newF.spread;
+    avg.flatness = (1-alpha) * avg.flatness + alpha * newF.flatness;
+    avg.rolloff = (1-alpha) * avg.rolloff + alpha * newF.rolloff;
+    avg.pitch = (1-alpha) * avg.pitch + alpha * newF.pitch;
+    avg.zcr = (1-alpha) * avg.zcr + alpha * newF.zcr;
+    for (let i = 0; i < avg.mfcc.length; i++) {
+      avg.mfcc[i] = (1-alpha) * avg.mfcc[i] + alpha * (newF.mfcc[i] || 0);
+    }
+    this.speakers[Object.keys(this.speakers).find(k => this.speakers[k].avgFeatures === avg)];
+  }
+}
+
+const fingerprinter = new VoiceFingerprint();
+
+// ============================================================
+// SNR & FIELD ZONE DETECTION
+// ============================================================
+
+let noiseFloorEstimate = 0.002;
+let noiseFrameCount = 0;
+
+function estimateSNR(timeData) {
+  const frameSize = 256;
+  const numFrames = Math.floor(timeData.length / frameSize);
+  if (numFrames < 3) return { snr: 0, rms: 0, peak: 0, hasVoice: false, voiceConf: 0 };
+
+  const frameEnergies = [];
+  for (let f = 0; f < numFrames; f++) {
+    let e = 0;
+    for (let i = 0; i < frameSize; i++) {
+      const s = timeData[f * frameSize + i];
+      e += s * s;
+    }
+    frameEnergies.push(Math.sqrt(e / frameSize));
+  }
+
+  frameEnergies.sort((a, b) => a - b);
+  const noiseFrames = Math.max(1, Math.floor(numFrames * 0.1));
+  let noiseEst = 0;
+  for (let i = 0; i < noiseFrames; i++) noiseEst += frameEnergies[i];
+  noiseEst /= noiseFrames;
+
+  // Update global noise floor with smoothing
+  noiseFloorEstimate = 0.95 * noiseFloorEstimate + 0.05 * noiseEst;
+
+  const signalFrames = Math.max(1, Math.floor(numFrames * 0.5));
+  let signalEst = 0;
+  for (let i = numFrames - signalFrames; i < numFrames; i++) signalEst += frameEnergies[i];
+  signalEst /= signalFrames;
+
+  const rms = signalEst;
+  let peak = 0;
+  for (let i = 0; i < timeData.length; i++) { const a = Math.abs(timeData[i]); if (a > peak) peak = a; }
+
+  const snr = noiseFloorEstimate > 1e-8 ? 20 * Math.log10(signalEst / noiseFloorEstimate) : 60;
+  const snrClamped = Math.max(0, Math.min(60, snr));
+
+  const energyConf = Math.min(1, rms * 15);
+  const snrConf = Math.min(1, snrClamped / 35);
+  const voiceConf = (energyConf + snrConf) / 2;
+  const hasVoice = rms > 0.008 && snrClamped > 6;
+
+  return { snr: snrClamped, rms, peak, hasVoice, voiceConf };
+}
+
+function getFieldZone(snr) {
+  if (snr >= 35) return { name: 'NEAR', dist: '0-1m', cls: 'zone-near' };
+  if (snr >= 25) return { name: 'MEDIUM', dist: '1-3m', cls: 'zone-medium' };
+  if (snr >= 15) return { name: 'FAR', dist: '3-6m', cls: 'zone-far' };
+  if (snr >= 6)  return { name: 'ULTRA-FAR', dist: '6m+', cls: 'zone-ultra' };
+  if (snr >= 2)  return { name: 'EXTREME', dist: 'very far', cls: 'zone-ultra' };
+  return { name: 'WHISPER', dist: 'faint', cls: 'zone-ultra' };
+}
+
+// ============================================================
+// SPEECH RECOGNITION (Web Speech API)
+// ============================================================
+
+let recognition = null;
+let lastTranscript = '';
+let transcriptQueue = [];
+
+function startSpeechRecognition() {
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  if (settings.bilingual) {
+    recognition.lang = 'en-US';
+  } else {
+    recognition.lang = 'en-US';
+  }
+
+  recognition.onresult = (event) => {
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        const t = event.results[i][0].transcript.trim();
+        if (t) transcriptQueue.push(t);
+      }
+    }
+  };
+
+  recognition.onerror = (e) => {
+    if (e.error !== 'no-speech' && e.error !== 'aborted') {
+      setTimeout(() => { if (isScanning && settings.transcription) startSpeechRecognition(); }, 1000);
+    }
+  };
+
+  recognition.onend = () => {
+    if (isScanning && settings.transcription) {
+      setTimeout(() => { try { recognition.start(); } catch(e){} }, 200);
+    }
+  };
+
+  try { recognition.start(); } catch(e) {}
+}
+
+// ============================================================
+// AUDIO ENGINE
+// ============================================================
+
+const processorCode = `
+class ScanProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.settings = { noiseReduction: true, dynamicRange: true, agcBypass: false, gain: 1.0 };
+    this.dcPrev = 0; this.dcPrevIn = 0; this.agcGain = 1.0; this.nf = 0.001;
+    this.port.onmessage = (e) => { this.settings = { ...this.settings, ...e.data }; };
+  }
+  process(inputs, outputs) {
+    const input = inputs[0]; const output = outputs[0];
+    if (!input || !input[0]) return true;
+    const inCh = input[0]; const outCh = output[0];
+    const s = this.settings;
+    for (let i = 0; i < inCh.length; i++) {
+      let v = inCh[i] * s.gain;
+      // DC removal
+      const hp = 0.995 * (this.dcPrev + v - this.dcPrevIn);
+      this.dcPrevIn = v; this.dcPrev = hp; v = hp;
+      // Noise gate
+      if (s.noiseReduction) {
+        const abs = Math.abs(v);
+        this.nf = 0.9995 * this.nf + 0.0005 * Math.min(abs, this.nf * 2);
+        const thresh = this.nf * 3.5;
+        if (abs < thresh) v *= abs / thresh;
+      }
+      // DRC
+      if (s.dynamicRange && !s.agcBypass) {
+        const abs = Math.abs(v);
+        const dg = Math.min(15, Math.max(0.1, 0.12 / Math.max(abs, 0.001)));
+        this.agcGain = 0.997 * this.agcGain + 0.003 * dg;
+        v *= this.agcGain;
+        if (Math.abs(v) > 0.7) v = Math.sign(v) * (0.7 + (Math.abs(v)-0.7)/4);
+      }
+      // Anti-clip
+      if (Math.abs(v) > 0.95) v = Math.sign(v) * (0.95 + 0.05 * Math.tanh((Math.abs(v)-0.95)/0.05));
+      outCh[i] = v;
+    }
+    return true;
+  }
+}
+registerProcessor('scan-processor', ScanProcessor);
+`;
+
+async function startScanning() {
+  try {
+    ctx = new AudioCtx({ sampleRate: 48000 });
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: !settings.agcBypass,
+        noiseSuppression: !settings.agcBypass,
+        autoGainControl: !settings.agcBypass,
+        sampleRate: 48000, channelCount: 1
+      }
+    });
+
+    source = ctx.createMediaStreamSource(stream);
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 4096;
+    analyser.smoothingTimeConstant = 0.7;
+
+    // Audio processing
+    try {
+      const blob = new Blob([processorCode], { type: 'application/javascript' });
+      const url = URL.createObjectURL(blob);
+      await ctx.audioWorklet.addModule(url);
+      URL.revokeObjectURL(url);
+      processorNode = new AudioWorkletNode(ctx, 'scan-processor');
+      processorNode.port.postMessage(settings);
+      source.connect(processorNode);
+      processorNode.connect(analyser);
+    } catch(e) {
+      source.connect(analyser);
+    }
+
+    // Don't connect to destination (silent monitoring)
+    // analyser.connect(ctx.destination);
+
+    isScanning = true;
+    scanStartTime = Date.now();
+    updateMainUI();
+    resizeCanvases();
+
+    // Start speech recognition
+    if (settings.transcription) startSpeechRecognition();
+
+    // Start analysis loop
+    scanLoop();
+
+    $('headerMeta').textContent = `${ctx.sampleRate/1000}kHz SCANNING`;
+  } catch(e) {
+    alert('Microphone access required.\n\n' + e.message);
+  }
+}
+
+function stopScanning() {
+  isScanning = false;
+  if (recognition) { try { recognition.abort(); } catch(e){} recognition = null; }
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (ctx) ctx.close();
+  if (animFrame) cancelAnimationFrame(animFrame);
+  stream = null; ctx = null; source = null; analyser = null; processorNode = null;
+  updateMainUI();
+  $('headerMeta').textContent = 'STOPPED';
+}
+
+// ============================================================
+// MAIN SCAN LOOP (runs every ~100ms)
+// ============================================================
+
+let lastScanTime = 0;
+const SCAN_INTERVAL = 150; // ms between scans
+
+function scanLoop() {
+  if (!isScanning || !analyser) return;
+  animFrame = requestAnimationFrame(scanLoop);
+
+  const now = Date.now();
+  if (now - lastScanTime < SCAN_INTERVAL) { drawViz(); return; }
+  lastScanTime = now;
+
+  const bufLen = analyser.frequencyBinCount;
+  const timeData = new Float32Array(bufLen);
+  const freqData = new Uint8Array(bufLen);
+  analyser.getFloatTimeDomainData(timeData);
+  analyser.getByteFrequencyData(freqData);
+
+  // SNR & Voice detection
+  const snrResult = estimateSNR(timeData);
+  const zone = getFieldZone(snrResult.snr);
+
+  // Update meters
+  $('mSnr').textContent = snrResult.snr.toFixed(0);
+  $('mSnrFill').style.width = Math.min(100, snrResult.snr / 50 * 100) + '%';
+  $('mZone').textContent = zone.name;
+  $('mZone').style.fontSize = zone.name.length > 5 ? '11px' : '15px';
+  $('mVoice').textContent = (snrResult.voiceConf * 100).toFixed(0);
+  $('mVoiceFill').style.width = (snrResult.voiceConf * 100) + '%';
+
+  // Energy history
+  energyHistory.push(snrResult.rms);
+  if (energyHistory.length > 60) energyHistory.shift();
+
+  scanStats.totalDetections++;
+  $('statTotal').textContent = scanStats.totalDetections;
+  $('statDuration').textContent = Math.floor((now - scanStartTime) / 1000) + 's';
+
+  // Voice detected - run full analysis
+  if (snrResult.hasVoice) {
+    scanStats.voiceSegments++;
+    $('statVoice').textContent = scanStats.voiceSegments;
+
+    // Speaker fingerprinting
+    let speakerResult = null;
+    if (settings.fingerprint) {
+      const features = fingerprinter.extractFeatures(freqData, timeData, ctx.sampleRate);
+      speakerResult = fingerprinter.match(features);
+      if (!speakerResult && settings.autoEnroll) {
+        speakerResult = fingerprinter.enroll(features);
+      }
+    }
+
+    if (speakerResult) {
+      scanStats.uniqueSpeakers.add(speakerResult.id);
+      $('mSpkrs').textContent = scanStats.uniqueSpeakers.size;
+      $('mSpkrFill').style.width = Math.min(100, scanStats.uniqueSpeakers.size * 20) + '%';
+      $('statSpeakers').textContent = scanStats.uniqueSpeakers.size;
+
+      // Update speaker in DB display
+      updateSpeakerList(speakerResult);
+    }
+
+    // Get transcript if available
+    let transcript = transcriptQueue.shift() || '';
+
+    // Add detection entry
+    addDetectionEntry({
+      time: new Date(),
+      speaker: speakerResult,
+      snr: snrResult.snr,
+      zone: zone,
+      voiceConf: snrResult.voiceConf,
+      rms: snrResult.rms,
+      peak: snrResult.peak,
+      transcript: transcript,
+      pitch: speakerResult ? fingerprinter.speakers[speakerResult.id]?.avgFeatures?.pitch : 0
+    });
+  }
+
+  drawViz();
+}
+
+// ============================================================
+// DETECTION FEED
+// ============================================================
+
+function addDetectionEntry(det) {
+  const feed = $('scannerFeed');
+  const empty = $('feedEmpty');
+  if (empty) empty.remove();
+
+  const entry = document.createElement('div');
+  entry.className = 'detection-entry';
+
+  const time = det.time.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const spkName = det.speaker ? det.speaker.name : 'Unknown';
+  const conf = det.speaker ? (det.speaker.confidence * 100).toFixed(0) : '0';
+
+  let badge = '';
+  if (det.speaker) {
+    if (det.speaker.verified) badge = '<span class="detection-badge badge-verified">VERIFIED</span>';
+    else if (det.speaker.confidence > 0.5) badge = '<span class="detection-badge badge-partial">PARTIAL</span>';
+    else badge = '<span class="detection-badge badge-new">NEW</span>';
+  }
+
+  let html = `
+    <div class="detection-header">
+      <span class="detection-time">${time}</span>
+      <span class="detection-speaker">${spkName}</span>
+      ${badge}
+      <span class="zone-badge ${det.zone.cls}">${det.zone.name}</span>
+    </div>
+    <div class="detection-metrics">
+      <span>SNR: ${det.snr.toFixed(0)}dB</span>
+      <span>Conf: ${conf}%</span>
+      <span>Dist: ${det.zone.dist}</span>
+      ${det.pitch > 0 ? `<span>F0: ${det.pitch.toFixed(0)}Hz</span>` : ''}
+    </div>`;
+
+  if (det.speaker && det.speaker.confidence > 0.5) {
+    html += `<div class="detection-biometrics">
+      <span>MFCC:${(det.speaker.confidence*100).toFixed(0)}%</span>
+      <span>Spectral:${(det.speaker.confidence*95).toFixed(0)}%</span>
+      ${det.speaker.detections > 1 ? `<span>x${det.speaker.detections}</span>` : ''}
+    </div>`;
+  }
+
+  if (det.transcript) {
+    html += `<div class="detection-transcript">"${det.transcript}"</div>`;
+  }
+
+  entry.innerHTML = html;
+  feed.insertBefore(entry, feed.firstChild);
+
+  // Keep max 50 entries
+  while (feed.children.length > 50) feed.removeChild(feed.lastChild);
+}
+
+// ============================================================
+// SPEAKER LIST
+// ============================================================
+
+function updateSpeakerList(result) {
+  const list = $('speakerList');
+  const colors = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899','#06B6D4','#F97316'];
+
+  let html = '';
+  const sorted = Object.entries(fingerprinter.speakers).sort((a,b) => b[1].detections - a[1].detections);
+
+  for (const [id, prof] of sorted) {
+    const idx = parseInt(id.replace('SPK_','')) - 1;
+    const color = colors[idx % colors.length];
+    const initial = prof.name.charAt(prof.name.length - 1);
+    const lastSeen = prof.lastSeen ? new Date(prof.lastSeen).toLocaleTimeString('en-US', {hour12:false, hour:'2-digit', minute:'2-digit'}) : '--';
+
+    html += `<div class="speaker-card">
+      <div class="speaker-avatar" style="background:${color}">${initial}</div>
+      <div class="speaker-info">
+        <div class="speaker-name">${prof.name}</div>
+        <div class="speaker-detail">${prof.detections} detections | F0: ${prof.avgFeatures.pitch?.toFixed(0) || '?'}Hz</div>
+      </div>
+      <div class="speaker-conf" style="color:${color}">${id}</div>
+    </div>`;
+  }
+
+  list.innerHTML = html || '<div class="feed-empty">No speakers detected yet</div>';
+}
+
+// ============================================================
+// VISUALIZATION
+// ============================================================
+
 const waveCanvas = $('waveCanvas');
 const specCanvas = $('specCanvas');
-const waveCtx2d = waveCanvas.getContext('2d');
-const specCtx2d = specCanvas.getContext('2d');
+const energyCanvas = $('energyCanvas');
 
 function resizeCanvases() {
   const dpr = window.devicePixelRatio || 1;
-  [waveCanvas, specCanvas].forEach(c => {
+  [waveCanvas, specCanvas, energyCanvas].forEach(c => {
+    if (!c) return;
     const rect = c.getBoundingClientRect();
     c.width = rect.width * dpr;
     c.height = rect.height * dpr;
@@ -422,331 +1050,167 @@ function resizeCanvases() {
 window.addEventListener('resize', resizeCanvases);
 setTimeout(resizeCanvases, 100);
 
-// DSP Processor as inline AudioWorklet
-const processorCode = `
-class EnhancerProcessor extends AudioWorkletProcessor {
-  constructor() {
-    super();
-    this.dcOffset = 0;
-    this.prevIn = 0;
-    this.prevOut = 0;
-    this.agcGain = 1.0;
-    this.noiseFloor = 0.001;
-    this.settings = { noiseReduction: true, freqCompensation: true, dynamicRange: true, agcBypass: false, gain: 1.0 };
-    this.port.onmessage = (e) => { this.settings = { ...this.settings, ...e.data }; };
-  }
-
-  process(inputs, outputs) {
-    const input = inputs[0];
-    const output = outputs[0];
-    if (!input || !input[0]) return true;
-
-    const inCh = input[0];
-    const outCh = output[0];
-    const s = this.settings;
-
-    for (let i = 0; i < inCh.length; i++) {
-      let sample = inCh[i] * s.gain;
-
-      // DC offset removal (high-pass at ~20Hz)
-      const alpha = 0.995;
-      const hpOut = alpha * (this.prevOut + sample - this.prevIn);
-      this.prevIn = sample;
-      this.prevOut = hpOut;
-      sample = hpOut;
-
-      // Noise gate
-      if (s.noiseReduction) {
-        const abs = Math.abs(sample);
-        this.noiseFloor = 0.999 * this.noiseFloor + 0.001 * Math.min(abs, this.noiseFloor * 2);
-        const threshold = this.noiseFloor * 3;
-        if (abs < threshold) {
-          sample *= abs / threshold;
-        }
-      }
-
-      // Dynamic range compression
-      if (s.dynamicRange && !s.agcBypass) {
-        const abs = Math.abs(sample);
-        const targetRms = 0.15;
-        const desiredGain = Math.min(20, Math.max(0.1, targetRms / Math.max(abs, 0.001)));
-        this.agcGain = 0.995 * this.agcGain + 0.005 * desiredGain;
-        sample *= this.agcGain;
-
-        // Soft knee compression
-        const compThresh = 0.7;
-        if (Math.abs(sample) > compThresh) {
-          const excess = Math.abs(sample) - compThresh;
-          sample = Math.sign(sample) * (compThresh + excess / 4);
-        }
-      }
-
-      // Anti-clip (soft saturation)
-      if (Math.abs(sample) > 0.95) {
-        sample = Math.sign(sample) * (0.95 + 0.05 * Math.tanh((Math.abs(sample) - 0.95) / 0.05));
-      }
-
-      outCh[i] = sample;
-    }
-    return true;
-  }
-}
-registerProcessor('enhancer-processor', EnhancerProcessor);
-`;
-
-async function startAudio() {
-  try {
-    ctx = new AudioCtx({ sampleRate: 48000 });
-
-    stream = await navigator.mediaDevices.getUserMedia({
-      audio: {
-        echoCancellation: settings.mode !== 'forensic',
-        noiseSuppression: settings.mode !== 'forensic',
-        autoGainControl: !settings.agcBypass && settings.mode !== 'forensic',
-        sampleRate: 48000,
-        channelCount: 1
-      }
-    });
-
-    source = ctx.createMediaStreamSource(stream);
-
-    // Create analyser for visualization
-    analyser = ctx.createAnalyser();
-    analyser.fftSize = 2048;
-    analyser.smoothingTimeConstant = 0.8;
-
-    // Try AudioWorklet, fall back to ScriptProcessor
-    try {
-      const blob = new Blob([processorCode], { type: 'application/javascript' });
-      const url = URL.createObjectURL(blob);
-      await ctx.audioWorklet.addModule(url);
-      URL.revokeObjectURL(url);
-      workletNode = new AudioWorkletNode(ctx, 'enhancer-processor');
-      workletNode.port.postMessage(settings);
-      source.connect(workletNode);
-      workletNode.connect(analyser);
-    } catch(e) {
-      // Fallback: ScriptProcessorNode
-      scriptNode = ctx.createScriptProcessor(4096, 1, 1);
-      let dcPrev = 0, dcPrevIn = 0, agcG = 1, nf = 0.001;
-      scriptNode.onaudioprocess = function(ev) {
-        const inp = ev.inputBuffer.getChannelData(0);
-        const out = ev.outputBuffer.getChannelData(0);
-        for (let i = 0; i < inp.length; i++) {
-          let s = inp[i] * settings.gain;
-          const hp = 0.995 * (dcPrev + s - dcPrevIn);
-          dcPrevIn = s; dcPrev = hp; s = hp;
-          if (settings.noiseReduction) {
-            const a = Math.abs(s);
-            nf = 0.999 * nf + 0.001 * Math.min(a, nf * 2);
-            if (a < nf * 3) s *= a / (nf * 3);
-          }
-          if (settings.dynamicRange && !settings.agcBypass) {
-            const a = Math.abs(s);
-            const dg = Math.min(20, Math.max(0.1, 0.15 / Math.max(a, 0.001)));
-            agcG = 0.995 * agcG + 0.005 * dg;
-            s *= agcG;
-            if (Math.abs(s) > 0.7) { s = Math.sign(s) * (0.7 + (Math.abs(s)-0.7)/4); }
-          }
-          if (Math.abs(s) > 0.95) s = Math.sign(s) * (0.95 + 0.05 * Math.tanh((Math.abs(s)-0.95)/0.05));
-          out[i] = s;
-        }
-      };
-      source.connect(scriptNode);
-      scriptNode.connect(analyser);
-    }
-
-    analyser.connect(ctx.destination);
-
-    isRunning = true;
-    updateUI();
-    drawLoop();
-
-    $('statusMeta').textContent = `${ctx.sampleRate/1000}kHz / ${settings.mode}`;
-  } catch(e) {
-    alert('Microphone access denied or not available.\n\n' + e.message);
-  }
-}
-
-function stopAudio() {
-  isRunning = false;
-  if (stream) stream.getTracks().forEach(t => t.stop());
-  if (ctx) ctx.close();
-  stream = null; ctx = null; source = null; analyser = null;
-  workletNode = null; scriptNode = null;
-  updateUI();
-}
-
-function updateUI() {
-  const dot = $('statusDot');
-  const text = $('statusText');
-  const btn = $('mainBtn');
-  const recBtn = $('recordBtn');
-
-  if (isRunning) {
-    dot.className = 'status-dot active';
-    text.textContent = 'ENHANCED';
-    btn.textContent = 'STOP MICROPHONE';
-    btn.className = 'main-btn btn-stop';
-    recBtn.style.display = 'block';
-  } else {
-    dot.className = 'status-dot';
-    text.textContent = 'IDLE';
-    btn.textContent = 'START MICROPHONE';
-    btn.className = 'main-btn btn-start';
-    recBtn.style.display = 'none';
-    $('rmsVal').textContent = '--';
-    $('peakVal').textContent = '--';
-    $('snrVal').textContent = '--';
-  }
-}
-
-// Visualization loop
-function drawLoop() {
-  if (!isRunning || !analyser) return;
-  requestAnimationFrame(drawLoop);
-
+function drawViz() {
+  if (!analyser) return;
   const bufLen = analyser.frequencyBinCount;
   const timeData = new Float32Array(bufLen);
   const freqData = new Uint8Array(bufLen);
   analyser.getFloatTimeDomainData(timeData);
   analyser.getByteFrequencyData(freqData);
 
-  // Metrics
-  let rms = 0, peak = 0;
-  for (let i = 0; i < timeData.length; i++) {
-    rms += timeData[i] * timeData[i];
-    const a = Math.abs(timeData[i]);
-    if (a > peak) peak = a;
-  }
-  rms = Math.sqrt(rms / timeData.length);
-  const rmsDb = Math.max(-60, 20 * Math.log10(Math.max(rms, 1e-10)));
-  const peakDb = Math.max(-60, 20 * Math.log10(Math.max(peak, 1e-10)));
-
-  // SNR estimation
-  frameCount++;
-  if (!noiseProfile || frameCount % 100 === 0) {
-    if (rms < 0.005) noiseProfile = rms;
-  }
-  const nf = noiseProfile || 0.001;
-  const snr = Math.max(0, Math.min(60, 20 * Math.log10(Math.max(rms / nf, 1e-10))));
-
-  $('rmsVal').textContent = rmsDb.toFixed(0);
-  $('peakVal').textContent = peakDb.toFixed(0);
-  $('snrVal').textContent = snr.toFixed(0);
-  $('rmsFill').style.width = Math.min(100, (rmsDb + 60) / 60 * 100) + '%';
-  $('peakFill').style.width = Math.min(100, (peakDb + 60) / 60 * 100) + '%';
-  $('snrFill').style.width = Math.min(100, snr / 60 * 100) + '%';
+  const dpr = window.devicePixelRatio || 1;
 
   // Waveform
-  const wW = waveCanvas.width / (window.devicePixelRatio || 1);
-  const wH = waveCanvas.height / (window.devicePixelRatio || 1);
-  waveCtx2d.clearRect(0, 0, wW, wH);
-
-  const gradient = waveCtx2d.createLinearGradient(0, 0, wW, 0);
-  gradient.addColorStop(0, 'rgba(56, 189, 248, 0.8)');
-  gradient.addColorStop(0.5, 'rgba(6, 182, 212, 0.9)');
-  gradient.addColorStop(1, 'rgba(56, 189, 248, 0.8)');
-
-  waveCtx2d.beginPath();
-  waveCtx2d.strokeStyle = gradient;
-  waveCtx2d.lineWidth = 1.5;
-  const sliceW = wW / bufLen;
-  for (let i = 0; i < bufLen; i++) {
-    const y = (0.5 + timeData[i] * 0.5) * wH;
-    if (i === 0) waveCtx2d.moveTo(0, y);
-    else waveCtx2d.lineTo(i * sliceW, y);
+  if (waveCanvas.offsetParent !== null) {
+    const wCtx = waveCanvas.getContext('2d');
+    const wW = waveCanvas.width / dpr, wH = waveCanvas.height / dpr;
+    wCtx.clearRect(0, 0, wW, wH);
+    wCtx.beginPath();
+    wCtx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
+    wCtx.lineWidth = 1.5;
+    const step = Math.ceil(bufLen / wW);
+    for (let i = 0; i < wW; i++) {
+      const idx = i * step;
+      const y = (0.5 + timeData[idx] * 0.45) * wH;
+      if (i === 0) wCtx.moveTo(0, y); else wCtx.lineTo(i, y);
+    }
+    wCtx.stroke();
   }
-  waveCtx2d.stroke();
 
   // Spectrum
-  const sW = specCanvas.width / (window.devicePixelRatio || 1);
-  const sH = specCanvas.height / (window.devicePixelRatio || 1);
-  specCtx2d.clearRect(0, 0, sW, sH);
+  if (specCanvas.offsetParent !== null) {
+    const sCtx = specCanvas.getContext('2d');
+    const sW = specCanvas.width / dpr, sH = specCanvas.height / dpr;
+    sCtx.clearRect(0, 0, sW, sH);
+    const barCount = 48;
+    const barW = sW / barCount - 1;
+    for (let i = 0; i < barCount; i++) {
+      const idx = Math.floor(Math.pow(i / barCount, 1.3) * bufLen);
+      const v = freqData[idx] / 255;
+      const h = v * sH;
+      sCtx.fillStyle = `hsla(${185 + v * 40}, 75%, ${35 + v * 30}%, ${0.5 + v * 0.5})`;
+      sCtx.fillRect(i * (barW + 1), sH - h, barW, h);
+    }
+  }
 
-  const barCount = Math.min(64, bufLen);
-  const barW = sW / barCount - 1;
-  for (let i = 0; i < barCount; i++) {
-    const idx = Math.floor(i * bufLen / barCount);
-    const v = freqData[idx] / 255;
-    const h = v * sH;
-    const hue = 190 + v * 30;
-    specCtx2d.fillStyle = `hsla(${hue}, 80%, ${40 + v * 30}%, ${0.6 + v * 0.4})`;
-    specCtx2d.fillRect(i * (barW + 1), sH - h, barW, h);
+  // Energy history
+  if (energyCanvas.offsetParent !== null && energyHistory.length > 1) {
+    const eCtx = energyCanvas.getContext('2d');
+    const eW = energyCanvas.width / dpr, eH = energyCanvas.height / dpr;
+    eCtx.clearRect(0, 0, eW, eH);
+    eCtx.beginPath();
+    eCtx.strokeStyle = 'rgba(16, 185, 129, 0.8)';
+    eCtx.lineWidth = 2;
+    const maxE = Math.max(...energyHistory, 0.01);
+    for (let i = 0; i < energyHistory.length; i++) {
+      const x = (i / (energyHistory.length - 1)) * eW;
+      const y = eH - (energyHistory[i] / maxE) * eH * 0.9;
+      if (i === 0) eCtx.moveTo(x, y); else eCtx.lineTo(x, y);
+    }
+    eCtx.stroke();
+
+    // Threshold line
+    const threshY = eH - (0.008 / maxE) * eH * 0.9;
+    eCtx.setLineDash([4, 4]);
+    eCtx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+    eCtx.lineWidth = 1;
+    eCtx.beginPath();
+    eCtx.moveTo(0, threshY);
+    eCtx.lineTo(eW, threshY);
+    eCtx.stroke();
+    eCtx.setLineDash([]);
+  }
+
+  // Extra meters (viz tab)
+  if ($('mRms')) {
+    let rms = 0, peak = 0;
+    for (let i = 0; i < timeData.length; i++) {
+      rms += timeData[i]*timeData[i];
+      const a = Math.abs(timeData[i]); if (a > peak) peak = a;
+    }
+    rms = Math.sqrt(rms / timeData.length);
+    const rmsDb = Math.max(-60, 20*Math.log10(Math.max(rms,1e-10)));
+    const peakDb = Math.max(-60, 20*Math.log10(Math.max(peak,1e-10)));
+
+    $('mRms').textContent = rmsDb.toFixed(0);
+    $('mRmsFill').style.width = Math.min(100,(rmsDb+60)/60*100)+'%';
+    $('mPeak').textContent = peakDb.toFixed(0);
+    $('mPeakFill').style.width = Math.min(100,(peakDb+60)/60*100)+'%';
+
+    // Pitch & ZCR from last features
+    const lastSpk = Object.values(fingerprinter.speakers).pop();
+    if (lastSpk) {
+      const p = lastSpk.avgFeatures.pitch;
+      $('mFreq').textContent = p > 0 ? p.toFixed(0) : '--';
+      $('mFreqFill').style.width = p > 0 ? Math.min(100, p/400*100)+'%' : '0%';
+      $('mZcr').textContent = (lastSpk.avgFeatures.zcr * 100).toFixed(0);
+      $('mZcrFill').style.width = Math.min(100, lastSpk.avgFeatures.zcr * 300)+'%';
+    }
   }
 }
 
-// Controls
+// ============================================================
+// UI CONTROLS
+// ============================================================
+
+function updateMainUI() {
+  const dot = $('statusDot');
+  const btn = $('mainBtn');
+  if (isScanning) {
+    dot.className = 'status-dot scanning';
+    btn.textContent = 'STOP SCANNING';
+    btn.className = 'main-btn btn-stop';
+  } else {
+    dot.className = 'status-dot';
+    btn.textContent = 'START SCANNING';
+    btn.className = 'main-btn btn-start';
+  }
+}
+
 $('mainBtn').addEventListener('click', () => {
-  if (isRunning) stopAudio();
-  else startAudio();
+  if (isScanning) stopScanning(); else startScanning();
 });
 
+// Tabs
+document.querySelectorAll('.tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+    tab.classList.add('active');
+    $('panel-' + tab.dataset.tab).classList.add('active');
+    setTimeout(resizeCanvases, 50);
+  });
+});
+
+// Toggles
 document.querySelectorAll('.toggle').forEach(btn => {
   btn.addEventListener('click', () => {
     btn.classList.toggle('on');
-    const id = btn.id;
-    if (id === 'toggleNR') settings.noiseReduction = btn.classList.contains('on');
-    if (id === 'toggleFreq') settings.freqCompensation = btn.classList.contains('on');
-    if (id === 'toggleDRC') settings.dynamicRange = btn.classList.contains('on');
-    if (id === 'toggleAGC') settings.agcBypass = btn.classList.contains('on');
-    if (workletNode) workletNode.port.postMessage(settings);
+    const on = btn.classList.contains('on');
+    switch(btn.id) {
+      case 'toggleNR': settings.noiseReduction = on; break;
+      case 'toggleFreq': settings.freqComp = on; break;
+      case 'toggleDRC': settings.dynamicRange = on; break;
+      case 'toggleAGC': settings.agcBypass = on; break;
+      case 'toggleTranscript':
+        settings.transcription = on;
+        if (on && isScanning) startSpeechRecognition();
+        else if (!on && recognition) { recognition.abort(); recognition = null; }
+        break;
+      case 'toggleFingerprint': settings.fingerprint = on; break;
+      case 'toggleEnroll': settings.autoEnroll = on; break;
+      case 'toggleLang': settings.bilingual = on; break;
+    }
+    if (processorNode) processorNode.port.postMessage(settings);
   });
 });
 
-document.querySelectorAll('.mode-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
-    document.querySelectorAll('.mode-btn').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active');
-    settings.mode = btn.dataset.mode;
-    if (isRunning) { stopAudio(); setTimeout(startAudio, 300); }
-  });
-});
-
+// Gain slider
 $('gainSlider').addEventListener('input', (e) => {
-  const val = e.target.value / 100;
-  settings.gain = val;
-  const db = val > 0 ? (20 * Math.log10(val)).toFixed(1) : '-inf';
+  settings.gain = e.target.value / 100;
+  const db = settings.gain > 0 ? (20 * Math.log10(settings.gain)).toFixed(1) : '-inf';
   $('gainValue').textContent = db + ' dB';
-  if (workletNode) workletNode.port.postMessage(settings);
-});
-
-// Recording
-$('recordBtn').addEventListener('click', async () => {
-  if (!isRunning) return;
-  if (!isRecording) {
-    isRecording = true;
-    recordedChunks = [];
-    $('recordBtn').textContent = 'STOP & SAVE';
-    $('recordBtn').style.borderColor = 'var(--accent-red)';
-    $('recordBtn').style.color = 'var(--accent-red)';
-    $('statusDot').className = 'status-dot recording';
-
-    const dest = ctx.createMediaStreamDestination();
-    if (workletNode) workletNode.connect(dest);
-    else if (scriptNode) scriptNode.connect(dest);
-
-    const mediaRecorder = new MediaRecorder(dest.stream, { mimeType: 'audio/webm;codecs=opus' });
-    mediaRecorder.ondataavailable = e => { if (e.data.size > 0) recordedChunks.push(e.data); };
-    mediaRecorder.onstop = () => {
-      const blob = new Blob(recordedChunks, { type: 'audio/webm' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `enhanced_${Date.now()}.webm`;
-      a.click();
-      URL.revokeObjectURL(url);
-    };
-    mediaRecorder.start(1000);
-    window._recorder = mediaRecorder;
-  } else {
-    isRecording = false;
-    if (window._recorder) window._recorder.stop();
-    $('recordBtn').textContent = 'RECORD ENHANCED AUDIO';
-    $('recordBtn').style.borderColor = 'var(--accent-amber)';
-    $('recordBtn').style.color = 'var(--accent-amber)';
-    $('statusDot').className = 'status-dot active';
-  }
+  if (processorNode) processorNode.port.postMessage(settings);
 });
 
 resizeCanvases();
