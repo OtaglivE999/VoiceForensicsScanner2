@@ -58,9 +58,9 @@ body {
   min-height: 100dvh;
   padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
   overflow-x: hidden;
-  -webkit-touch-callout: none;
-  -webkit-user-select: none;
-  user-select: none;
+}
+button, input[type="range"] {
+  touch-action: manipulation;
 }
 
 .app {
@@ -99,11 +99,13 @@ body {
   padding: 4px;
 }
 .tab {
-  flex: 1; padding: 7px 4px; border: none; border-radius: 7px;
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1; padding: 9px 4px; border: none; border-radius: 7px;
   background: transparent; color: var(--text-dim);
   font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
   text-transform: uppercase; cursor: pointer;
-  -webkit-tap-highlight-color: transparent; transition: all 0.15s;
+  touch-action: manipulation;
 }
 .tab.active { background: var(--bg-card); color: var(--accent-blue); }
 
@@ -218,15 +220,18 @@ body {
 .control-row { display: flex; align-items: center; justify-content: space-between; }
 .control-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
 .toggle {
-  position: relative; width: 40px; height: 22px;
-  background: var(--meter-bg); border-radius: 11px;
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative; width: 44px; height: 26px;
+  background: var(--meter-bg); border-radius: 13px;
   cursor: pointer; border: none; outline: none;
-  -webkit-tap-highlight-color: transparent; transition: background 0.2s;
+  touch-action: manipulation;
+  transition: background 0.2s;
 }
 .toggle.on { background: var(--accent-blue); }
 .toggle::after {
-  content: ''; position: absolute; top: 2px; left: 2px;
-  width: 18px; height: 18px; border-radius: 50%;
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 20px; height: 20px; border-radius: 50%;
   background: white; transition: transform 0.2s;
   box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
@@ -239,15 +244,17 @@ body {
 
 /* Main button */
 .main-btn {
-  width: 100%; padding: 14px; border: none; border-radius: 12px;
-  font-size: 14px; font-weight: 700; letter-spacing: 0.03em;
-  cursor: pointer; transition: all 0.2s;
-  -webkit-tap-highlight-color: transparent;
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%; padding: 16px; border: none; border-radius: 12px;
+  font-size: 16px; font-weight: 700; letter-spacing: 0.03em;
+  cursor: pointer;
+  touch-action: manipulation;
+  position: relative;
+  z-index: 10;
 }
 .btn-start { background: var(--accent-green); color: #fff; }
-.btn-start:active { transform: scale(0.97); }
 .btn-stop { background: var(--accent-red); color: #fff; }
-.btn-stop:active { transform: scale(0.97); }
 
 /* Speakers panel */
 .speaker-list { display: flex; flex-direction: column; gap: 6px; }
@@ -268,6 +275,21 @@ body {
   font-family: 'SF Mono', ui-monospace, monospace;
   font-size: 12px; font-weight: 700;
 }
+
+.mode-btn {
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 8px 4px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg-card); color: var(--text-secondary);
+  font-size: 11px; font-weight: 600; text-align: center;
+  cursor: pointer; touch-action: manipulation;
+}
+.mode-btn.active {
+  border-color: var(--accent-blue);
+  background: rgba(56, 189, 248, 0.1);
+  color: var(--accent-blue);
+}
+.mode-selector { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
@@ -395,7 +417,13 @@ body {
   <!-- Settings Panel -->
   <div class="panel" id="panel-settings">
     <div class="controls">
-      <div class="section-title">Enhancement</div>
+      <div class="section-title">Scan Mode</div>
+      <div class="mode-selector">
+        <button class="mode-btn active" data-mode="forensic">Forensic</button>
+        <button class="mode-btn" data-mode="voice">Voice ISO</button>
+        <button class="mode-btn" data-mode="wide">Wide Spec</button>
+      </div>
+      <div class="section-title" style="margin-top:8px">Enhancement</div>
       <div class="control-row">
         <span class="control-label">Noise Reduction</span>
         <button class="toggle on" id="toggleNR" aria-label="Toggle noise reduction"></button>
@@ -797,13 +825,20 @@ registerProcessor('scan-processor', ScanProcessor);
 
 async function startScanning() {
   try {
+    // iOS Safari requires AudioContext creation inside a user gesture
     ctx = new AudioCtx({ sampleRate: 48000 });
+
+    // iOS Safari: must resume AudioContext from user gesture
+    if (ctx.state === 'suspended') {
+      await ctx.resume();
+    }
+
     stream = await navigator.mediaDevices.getUserMedia({
       audio: {
         echoCancellation: !settings.agcBypass,
         noiseSuppression: !settings.agcBypass,
         autoGainControl: !settings.agcBypass,
-        sampleRate: 48000, channelCount: 1
+        channelCount: 1
       }
     });
 
@@ -812,10 +847,10 @@ async function startScanning() {
     analyser.fftSize = 4096;
     analyser.smoothingTimeConstant = 0.7;
 
-    // Audio processing
+    // Audio processing via AudioWorklet (or fallback for older iOS)
     try {
-      const blob = new Blob([processorCode], { type: 'application/javascript' });
-      const url = URL.createObjectURL(blob);
+      var blob = new Blob([processorCode], { type: 'application/javascript' });
+      var url = URL.createObjectURL(blob);
       await ctx.audioWorklet.addModule(url);
       URL.revokeObjectURL(url);
       processorNode = new AudioWorkletNode(ctx, 'scan-processor');
@@ -823,11 +858,9 @@ async function startScanning() {
       source.connect(processorNode);
       processorNode.connect(analyser);
     } catch(e) {
+      // Fallback: connect directly (no DSP, just analysis)
       source.connect(analyser);
     }
-
-    // Don't connect to destination (silent monitoring)
-    // analyser.connect(ctx.destination);
 
     isScanning = true;
     scanStartTime = Date.now();
@@ -840,9 +873,9 @@ async function startScanning() {
     // Start analysis loop
     scanLoop();
 
-    $('headerMeta').textContent = `${ctx.sampleRate/1000}kHz SCANNING`;
+    $('headerMeta').textContent = (ctx.sampleRate/1000).toFixed(0) + 'kHz SCANNING';
   } catch(e) {
-    alert('Microphone access required.\n\n' + e.message);
+    alert('Microphone access required. Please allow microphone permission and try again.\n\n' + e.message);
   }
 }
 
@@ -1150,7 +1183,7 @@ function drawViz() {
 }
 
 // ============================================================
-// UI CONTROLS
+// UI CONTROLS (iOS Safari compatible)
 // ============================================================
 
 function updateMainUI() {
@@ -1167,26 +1200,44 @@ function updateMainUI() {
   }
 }
 
-$('mainBtn').addEventListener('click', () => {
+// iOS Safari fix: use touchend with preventDefault to avoid 300ms delay
+// and double-firing. Fall back to click for non-touch devices.
+function onTap(el, handler) {
+  let touched = false;
+  el.addEventListener('touchend', function(e) {
+    e.preventDefault();
+    touched = true;
+    handler(e);
+  }, { passive: false });
+  el.addEventListener('click', function(e) {
+    if (!touched) handler(e);
+    touched = false;
+  });
+}
+
+// Main scan button
+onTap($('mainBtn'), function() {
   if (isScanning) stopScanning(); else startScanning();
 });
 
 // Tabs
-document.querySelectorAll('.tab').forEach(tab => {
-  tab.addEventListener('click', () => {
-    document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.panel').forEach(p => p.classList.remove('active'));
+document.querySelectorAll('.tab').forEach(function(tab) {
+  onTap(tab, function() {
+    document.querySelectorAll('.tab').forEach(function(t) { t.classList.remove('active'); });
+    document.querySelectorAll('.panel').forEach(function(p) { p.classList.remove('active'); });
     tab.classList.add('active');
-    $('panel-' + tab.dataset.tab).classList.add('active');
+    var panelId = 'panel-' + tab.getAttribute('data-tab');
+    var panel = document.getElementById(panelId);
+    if (panel) panel.classList.add('active');
     setTimeout(resizeCanvases, 50);
   });
 });
 
 // Toggles
-document.querySelectorAll('.toggle').forEach(btn => {
-  btn.addEventListener('click', () => {
+document.querySelectorAll('.toggle').forEach(function(btn) {
+  onTap(btn, function() {
     btn.classList.toggle('on');
-    const on = btn.classList.contains('on');
+    var on = btn.classList.contains('on');
     switch(btn.id) {
       case 'toggleNR': settings.noiseReduction = on; break;
       case 'toggleFreq': settings.freqComp = on; break;
@@ -1205,10 +1256,30 @@ document.querySelectorAll('.toggle').forEach(btn => {
   });
 });
 
-// Gain slider
-$('gainSlider').addEventListener('input', (e) => {
+// Mode buttons
+document.querySelectorAll('.mode-btn').forEach(function(btn) {
+  onTap(btn, function() {
+    document.querySelectorAll('.mode-btn').forEach(function(b) { b.classList.remove('active'); });
+    btn.classList.add('active');
+    var mode = btn.getAttribute('data-mode');
+    if (mode === 'forensic') {
+      settings.agcBypass = true;
+      settings.noiseReduction = true;
+    } else if (mode === 'voice') {
+      settings.agcBypass = false;
+      settings.noiseReduction = true;
+    } else {
+      settings.agcBypass = true;
+      settings.noiseReduction = false;
+    }
+    if (processorNode) processorNode.port.postMessage(settings);
+  });
+});
+
+// Gain slider - works natively on iOS
+$('gainSlider').addEventListener('input', function(e) {
   settings.gain = e.target.value / 100;
-  const db = settings.gain > 0 ? (20 * Math.log10(settings.gain)).toFixed(1) : '-inf';
+  var db = settings.gain > 0 ? (20 * Math.log10(settings.gain)).toFixed(1) : '-inf';
   $('gainValue').textContent = db + ' dB';
   if (processorNode) processorNode.port.postMessage(settings);
 });
