@@ -425,7 +425,17 @@ button, input[type="range"] {
       <button class="main-btn" style="flex:1;font-size:11px;padding:10px 8px;min-width:0;background:var(--accent-green);border:none;border-radius:8px;color:#fff;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="handleExportSpeakers()">EXPORT SPEAKERS</button>
       <button class="main-btn" style="flex:1;font-size:11px;padding:10px 8px;min-width:0;background:var(--accent-red);border:none;border-radius:8px;color:#fff;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="handleClearData()">CLEAR ALL</button>
     </div>
+    <div class="section-title" style="margin-top:10px">Forensic Verification</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="main-btn" style="flex:1;font-size:11px;padding:10px 8px;min-width:0;background:var(--accent-purple);border:none;border-radius:8px;color:#fff;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="document.getElementById('importFile').click()">IMPORT LIBRARY</button>
+      <button class="main-btn" id="verifyBtn" style="flex:1;font-size:11px;padding:10px 8px;min-width:0;background:var(--accent-amber);border:none;border-radius:8px;color:#000;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="handleVerifyVoice()">VERIFY VOICE</button>
+      <button class="main-btn" style="flex:1;font-size:11px;padding:10px 8px;min-width:0;background:var(--accent-cyan);border:none;border-radius:8px;color:#000;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="document.getElementById('verifyFile').click()">VERIFY FILE</button>
+    </div>
+    <input type="file" id="importFile" accept="application/json,.json" style="display:none" onchange="handleImportLibrary(this)">
+    <input type="file" id="verifyFile" accept="application/json,.json" style="display:none" onchange="handleVerifyFile(this)">
+    <div id="verifyResult" style="margin-top:8px;display:none"></div>
     <div style="font-size:10px;color:var(--text-dim);text-align:center;margin-top:4px" id="storageInfo"></div>
+    <div style="font-size:9px;color:var(--text-dim);text-align:center;margin-top:2px;line-height:1.4">Screening-grade biometrics. Exports carry a SHA-256 integrity hash. Not a substitute for court-validated ASV or expert examination.</div>
   </div>
 
   <!-- Settings Panel -->
@@ -582,7 +592,7 @@ function updateStorageInfo() {
   if (el) el.textContent = logCount + ' log entries | ' + spkCount + ' speakers in library';
 }
 
-function handleExportLog() {
+async function handleExportLog() {
   if (detectionLog.length === 0) { dbg('No log entries to export'); return; }
   var csv = 'Date,Time,Speaker_ID,Speaker_Name,Confidence,Verified,SNR_dB,Zone,Distance,Voice_Confidence,Pitch_F0_Hz,F1_Hz,F2_Hz,F3_Hz,F2_F1_Ratio,F3_F2_Ratio,Nasal_Formant_Hz,Nasalance_pct,Ambient_Class,Noise_Floor_dB,Ambient_Peak_Hz,Ambient_Hum_pct,Device_Latitude,Device_Longitude,GPS_Accuracy_m,Transcript\n';
   for (var i = 0; i < detectionLog.length; i++) {
@@ -616,15 +626,180 @@ function handleExportLog() {
     var transcript = (d.transcript || '').replace(/"/g, '""');
     csv += '"' + date + '","' + time + '","' + spkId + '","' + spkName + '","' + conf + '%","' + verified + '","' + snr + '","' + zone + '","' + dist + '","' + vconf + '%","' + pitch + '","' + f1 + '","' + f2 + '","' + f3 + '","' + f2f1 + '","' + f3f2 + '","' + nasalF + '","' + nasalance + '","' + ambClass + '","' + ambFloor + '","' + ambPeak + '","' + ambHum + '","' + lat + '","' + lng + '","' + gpsAcc + '","' + transcript + '"\n';
   }
+  // Tamper-evident footer: SHA-256 of all data rows + chain-of-custody metadata
+  var hash = await sha256Hex(csv);
+  csv += '\n"# INTEGRITY","SHA-256","' + (hash || 'unavailable') + '"\n';
+  csv += '"# DEVICE","' + getDeviceId() + '","EXPORTED","' + new Date().toISOString() + '","ENTRIES","' + detectionLog.length + '"\n';
   downloadFile('voice_forensics_log_' + formatFileDate() + '.csv', csv, 'text/csv');
-  dbg('Exported ' + detectionLog.length + ' log entries as CSV');
+  dbg('Exported ' + detectionLog.length + ' log entries as CSV (SHA-256 ' + (hash ? hash.slice(0,12) + '…' : 'n/a') + ')');
 }
 
-function handleExportSpeakers() {
+// Persistent per-device identifier (for chain-of-custody metadata)
+function getDeviceId() {
+  var id = localStorage.getItem('vfs_device_id');
+  if (!id) {
+    id = 'DEV-' + Math.random().toString(36).slice(2, 10).toUpperCase() + '-' + Date.now().toString(36).toUpperCase();
+    localStorage.setItem('vfs_device_id', id);
+  }
+  return id;
+}
+
+// SHA-256 hex digest via Web Crypto (requires https / secure context)
+async function sha256Hex(str) {
+  if (!(window.crypto && crypto.subtle)) return null;
+  const buf = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(str));
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function handleExportSpeakers() {
   if (!fingerprinter || Object.keys(fingerprinter.speakers).length === 0) { dbg('No speakers to export'); return; }
-  var data = { exported: new Date().toISOString(), speakers: fingerprinter.speakers, totalSessions: JSON.parse(localStorage.getItem(STORAGE_KEYS.sessions) || '[]').length };
-  downloadFile('voice_forensics_speakers_' + formatFileDate() + '.json', JSON.stringify(data, null, 2), 'application/json');
-  dbg('Exported ' + Object.keys(fingerprinter.speakers).length + ' speaker profiles');
+  var payload = {
+    format: 'VoiceForensics-SpeakerLibrary-v1',
+    exported: new Date().toISOString(),
+    deviceId: getDeviceId(),
+    speakerCount: Object.keys(fingerprinter.speakers).length,
+    totalSessions: JSON.parse(localStorage.getItem(STORAGE_KEYS.sessions) || '[]').length,
+    speakers: fingerprinter.speakers
+  };
+  // Tamper-evident integrity hash over the canonical payload (hash excluded)
+  var hash = await sha256Hex(JSON.stringify(payload));
+  var out = Object.assign({}, payload, { integrity: { algorithm: 'SHA-256', hash: hash || 'unavailable' } });
+  downloadFile('voice_forensics_speakers_' + formatFileDate() + '.json', JSON.stringify(out, null, 2), 'application/json');
+  dbg('Exported ' + payload.speakerCount + ' speaker profiles (SHA-256 ' + (hash ? hash.slice(0,12) + '…' : 'n/a') + ')');
+}
+
+// ---- Verify an exported library's integrity hash; returns {ok, computed, stored} ----
+async function verifyIntegrity(obj) {
+  if (!obj || !obj.integrity || !obj.integrity.hash || obj.integrity.hash === 'unavailable') return { ok: null };
+  var stored = obj.integrity.hash;
+  var clone = Object.assign({}, obj);
+  delete clone.integrity;
+  var computed = await sha256Hex(JSON.stringify(clone));
+  return { ok: computed === stored, computed: computed, stored: stored };
+}
+
+// ---- Reference library (imported known voiceprints used for verification) ----
+var referenceLibrary = { speakers: {}, meta: null };
+
+function readJsonFile(input, cb) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try { cb(JSON.parse(e.target.result), file.name); }
+    catch (err) { dbg('Import failed: invalid JSON'); showVerify('<span style="color:var(--accent-red)">Invalid JSON file</span>'); }
+  };
+  reader.onerror = function() { dbg('File read error'); };
+  reader.readAsText(file);
+  input.value = ''; // allow re-selecting the same file
+}
+
+async function handleImportLibrary(input) {
+  readJsonFile(input, async function(obj, fname) {
+    var spk = obj.speakers || {};
+    var n = Object.keys(spk).length;
+    if (n === 0) { showVerify('<span style="color:var(--accent-red)">No speakers found in file</span>'); return; }
+    var integ = await verifyIntegrity(obj);
+    referenceLibrary = { speakers: spk, meta: { file: fname, exported: obj.exported, deviceId: obj.deviceId, integrity: integ } };
+    var badge = integ.ok === true ? '<span style="color:var(--accent-green)">INTACT ✓</span>'
+              : integ.ok === false ? '<span style="color:var(--accent-red)">HASH MISMATCH — TAMPERED ✗</span>'
+              : '<span style="color:var(--text-dim)">no hash</span>';
+    showVerify('<div style="font-weight:700;color:var(--accent-purple)">Reference library loaded</div>' +
+      '<div style="font-size:10px;margin-top:3px">' + n + ' known voiceprints | integrity: ' + badge + '</div>' +
+      (obj.exported ? '<div style="font-size:9px;color:var(--text-dim)">exported ' + new Date(obj.exported).toLocaleString() + (obj.deviceId ? ' · ' + obj.deviceId : '') + '</div>' : '') +
+      '<div style="font-size:9px;color:var(--text-dim);margin-top:2px">Now tap VERIFY VOICE (while scanning) to match a live speaker, or VERIFY FILE to match a saved sample.</div>');
+    dbg('Imported ' + n + ' reference voiceprints, integrity=' + integ.ok);
+  });
+}
+
+// Match a feature vector against the reference library; returns ranked matches
+function matchAgainstReference(features) {
+  var results = [];
+  for (var id in referenceLibrary.speakers) {
+    var prof = referenceLibrary.speakers[id];
+    var score = fingerprinter.compareFeatures(features, prof.avgFeatures || prof);
+    results.push({ id: id, name: (prof.name || id), score: score });
+  }
+  results.sort(function(a, b) { return b.score - a.score; });
+  return results;
+}
+
+function verdictFor(score) {
+  if (score >= 0.85) return { label: 'IDENTITY MATCH', color: 'var(--accent-green)' };
+  if (score >= 0.70) return { label: 'PROBABLE MATCH', color: 'var(--accent-amber)' };
+  if (score >= 0.55) return { label: 'POSSIBLE / INCONCLUSIVE', color: 'var(--accent-amber)' };
+  return { label: 'NO MATCH', color: 'var(--accent-red)' };
+}
+
+function renderMatches(title, results, extra) {
+  if (results.length === 0) { showVerify('<span style="color:var(--accent-red)">Reference library is empty — IMPORT LIBRARY first</span>'); return; }
+  var top = results[0];
+  var v = verdictFor(top.score);
+  var html = '<div style="font-weight:700;color:' + v.color + '">' + v.label + '</div>' +
+    '<div style="font-size:11px;margin-top:2px">Best: <b>' + top.name + '</b> (' + top.id + ') — ' + (top.score * 100).toFixed(1) + '%</div>';
+  if (extra) html += '<div style="font-size:9px;color:var(--text-dim)">' + extra + '</div>';
+  html += '<div style="font-size:10px;color:var(--text-dim);margin-top:4px">Ranked candidates:</div>';
+  for (var i = 0; i < Math.min(5, results.length); i++) {
+    var r = results[i];
+    var pct = (r.score * 100).toFixed(1);
+    html += '<div style="display:flex;align-items:center;gap:6px;font-size:10px;margin-top:2px">' +
+      '<span style="min-width:90px">' + r.name + '</span>' +
+      '<div style="flex:1;height:6px;background:var(--meter-bg);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + verdictFor(r.score).color + '"></div></div>' +
+      '<span style="min-width:42px;text-align:right">' + pct + '%</span></div>';
+  }
+  html += '<div style="font-size:8px;color:var(--text-dim);margin-top:4px">Thresholds: ≥85% match · ≥70% probable · ≥55% possible. Screening indication only.</div>';
+  showVerify(html);
+}
+
+function handleVerifyVoice() {
+  if (Object.keys(referenceLibrary.speakers).length === 0) { showVerify('<span style="color:var(--accent-red)">Import a reference library first (IMPORT LIBRARY)</span>'); return; }
+  if (!isScanning || !analyser) { showVerify('<span style="color:var(--accent-amber)">Start scanning, let the target speak, then tap VERIFY VOICE</span>'); return; }
+  var bufLen = analyser.frequencyBinCount;
+  var timeData = new Float32Array(bufLen);
+  var freqData = new Uint8Array(bufLen);
+  analyser.getFloatTimeDomainData(timeData);
+  analyser.getByteFrequencyData(freqData);
+  var snr = estimateSNR(timeData);
+  if (!snr.hasVoice) { showVerify('<span style="color:var(--accent-amber)">No clear voice this instant — try again while the person is speaking</span>'); return; }
+  var features = fingerprinter.extractFeatures(freqData, timeData, ctx.sampleRate);
+  renderMatches('live', matchAgainstReference(features), 'live sample · SNR ' + snr.snr.toFixed(0) + 'dB · ' + new Date().toLocaleTimeString());
+  dbg('Verified live voice against ' + Object.keys(referenceLibrary.speakers).length + ' references');
+}
+
+async function handleVerifyFile(input) {
+  if (Object.keys(referenceLibrary.speakers).length === 0) { showVerify('<span style="color:var(--accent-red)">Import a reference library first (IMPORT LIBRARY)</span>'); input.value=''; return; }
+  readJsonFile(input, async function(obj, fname) {
+    // Accept either a full library export or a single { avgFeatures } / feature object
+    var probes = [];
+    if (obj.speakers) { for (var id in obj.speakers) probes.push({ name: obj.speakers[id].name || id, features: obj.speakers[id].avgFeatures }); }
+    else if (obj.avgFeatures) probes.push({ name: obj.name || fname, features: obj.avgFeatures });
+    else if (obj.mfcc || obj.f1 || obj.centroid) probes.push({ name: fname, features: obj });
+    if (probes.length === 0) { showVerify('<span style="color:var(--accent-red)">No voiceprint features found in file</span>'); return; }
+    var integ = await verifyIntegrity(obj);
+    var integTxt = integ.ok === true ? 'file integrity INTACT ✓' : integ.ok === false ? 'file integrity MISMATCH ✗' : 'file has no hash';
+    // Verify the first probe (or the strongest across all probes)
+    var best = null;
+    probes.forEach(function(p) {
+      if (!p.features) return;
+      var res = matchAgainstReference(p.features);
+      if (res.length && (!best || res[0].score > best.top)) best = { probe: p.name, results: res, top: res[0].score };
+    });
+    if (!best) { showVerify('<span style="color:var(--accent-red)">Could not read features from file</span>'); return; }
+    renderMatches('file', best.results, 'probe: ' + best.probe + ' · ' + integTxt);
+    dbg('Verified file "' + fname + '" against reference library');
+  });
+}
+
+function showVerify(html) {
+  var el = $('verifyResult');
+  if (!el) return;
+  el.style.display = 'block';
+  el.style.background = 'var(--bg-panel)';
+  el.style.border = '1px solid var(--border)';
+  el.style.borderRadius = '10px';
+  el.style.padding = '10px';
+  el.style.fontFamily = "'SF Mono',ui-monospace,monospace";
+  el.innerHTML = html;
 }
 
 function handleClearData() {
