@@ -426,6 +426,7 @@ button, input[type="range"] {
       <button class="main-btn" style="flex:1;font-size:11px;padding:10px 8px;min-width:0;background:var(--accent-red);border:none;border-radius:8px;color:#fff;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="handleClearData()">CLEAR ALL</button>
     </div>
     <button class="main-btn" id="downloadAudioBtn" style="display:none;width:100%;font-size:11px;padding:10px 8px;margin-top:6px;background:var(--accent-cyan);border:none;border-radius:8px;color:#000;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="handleDownloadAudio()">DOWNLOAD AUDIO</button>
+    <button class="main-btn" style="width:100%;font-size:12px;padding:12px 8px;margin-top:6px;background:linear-gradient(135deg,var(--accent-purple),var(--accent-blue));border:none;border-radius:8px;color:#fff;font-weight:700;letter-spacing:0.04em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="handleDownloadAll()">⬇ DOWNLOAD ALL (ZIP)</button>
 
     <div class="section-title" style="margin-top:10px">Case / Operator</div>
     <div style="display:flex;flex-direction:column;gap:5px">
@@ -605,8 +606,8 @@ function updateStorageInfo() {
   if (el) el.textContent = logCount + ' log entries | ' + spkCount + ' speakers in library';
 }
 
-async function handleExportLog() {
-  if (detectionLog.length === 0) { dbg('No log entries to export'); return; }
+async function buildLogCsv() {
+  if (detectionLog.length === 0) return null;
   var csv = 'Date,Time,Speaker_ID,Speaker_Name,Confidence,Verified,SNR_dB,Zone,Distance,Voice_Confidence,Pitch_F0_Hz,F1_Hz,F2_Hz,F3_Hz,F2_F1_Ratio,F3_F2_Ratio,Nasal_Formant_Hz,Nasalance_pct,Ambient_Class,Noise_Floor_dB,Ambient_Peak_Hz,Ambient_Hum_pct,Device_Latitude,Device_Longitude,GPS_Accuracy_m,Transcript\n';
   for (var i = 0; i < detectionLog.length; i++) {
     var d = detectionLog[i];
@@ -646,8 +647,14 @@ async function handleExportLog() {
   csv += '"# DEVICE","' + getDeviceId() + '","EXPORTED","' + new Date().toISOString() + '","ENTRIES","' + detectionLog.length + '"\n';
   csv += '"# CASE","' + (ci.caseId || '').replace(/"/g,'""') + '","OPERATOR","' + (ci.operator || '').replace(/"/g,'""') + '","NOTES","' + (ci.notes || '').replace(/"/g,'""') + '"\n';
   if (evidenceClip) csv += '"# AUDIO_EVIDENCE_SHA256","' + (evidenceClip.sha256 || 'n/a') + '","BYTES","' + evidenceClip.bytes + '","MIME","' + evidenceClip.mime + '"\n';
+  return csv;
+}
+
+async function handleExportLog() {
+  if (detectionLog.length === 0) { dbg('No log entries to export'); return; }
+  var csv = await buildLogCsv();
   downloadFile('voice_forensics_log_' + formatFileDate() + '.csv', csv, 'text/csv');
-  dbg('Exported ' + detectionLog.length + ' log entries as CSV (SHA-256 ' + (hash ? hash.slice(0,12) + '…' : 'n/a') + ')');
+  dbg('Exported ' + detectionLog.length + ' log entries as CSV');
 }
 
 // Persistent per-device identifier (for chain-of-custody metadata)
@@ -672,8 +679,8 @@ async function sha256HexBytes(bytes) {
   return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
 }
 
-async function handleExportSpeakers() {
-  if (!fingerprinter || Object.keys(fingerprinter.speakers).length === 0) { dbg('No speakers to export'); return; }
+async function buildSpeakerJson() {
+  if (!fingerprinter || Object.keys(fingerprinter.speakers).length === 0) return null;
   var payload = {
     format: 'VoiceForensics-SpeakerLibrary-v1',
     exported: new Date().toISOString(),
@@ -687,8 +694,14 @@ async function handleExportSpeakers() {
   // Tamper-evident integrity hash over the canonical payload (hash excluded)
   var hash = await sha256Hex(JSON.stringify(payload));
   var out = Object.assign({}, payload, { integrity: { algorithm: 'SHA-256', hash: hash || 'unavailable' } });
-  downloadFile('voice_forensics_speakers_' + formatFileDate() + '.json', JSON.stringify(out, null, 2), 'application/json');
-  dbg('Exported ' + payload.speakerCount + ' speaker profiles (SHA-256 ' + (hash ? hash.slice(0,12) + '…' : 'n/a') + ')');
+  return JSON.stringify(out, null, 2);
+}
+
+async function handleExportSpeakers() {
+  if (!fingerprinter || Object.keys(fingerprinter.speakers).length === 0) { dbg('No speakers to export'); return; }
+  var json = await buildSpeakerJson();
+  downloadFile('voice_forensics_speakers_' + formatFileDate() + '.json', json, 'application/json');
+  dbg('Exported ' + Object.keys(fingerprinter.speakers).length + ' speaker profiles');
 }
 
 // ---- Verify an exported library's integrity hash; returns {ok, computed, stored} ----
@@ -854,6 +867,153 @@ function downloadFile(filename, content, mimeType) {
 function formatFileDate() {
   var d = new Date();
   return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + '_' + String(d.getHours()).padStart(2,'0') + String(d.getMinutes()).padStart(2,'0');
+}
+
+// ============================================================
+// PURE-JS ZIP WRITER (store/no-compression) — fully self-contained,
+// no external library. Produces a standard .zip readable by any tool.
+// ============================================================
+
+var _crcTable = (function() {
+  var t = new Uint32Array(256);
+  for (var n = 0; n < 256; n++) {
+    var c = n;
+    for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes) {
+  var c = 0xFFFFFFFF;
+  for (var i = 0; i < bytes.length; i++) c = _crcTable[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function _u16(n) { return [n & 0xFF, (n >>> 8) & 0xFF]; }
+function _u32(n) { return [n & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF]; }
+function _strBytes(s) { return new TextEncoder().encode(s); }
+
+// files: [{ name: string, data: Uint8Array }]  -> Blob (application/zip)
+function makeZip(files) {
+  var chunks = [];      // array of Uint8Array
+  var central = [];     // central directory records
+  var offset = 0;
+  // DOS time/date (fixed; not critical for forensic content, hashes are)
+  var dtime = _u16(0), ddate = _u16(0x21); // 1980-01-01
+  files.forEach(function(f) {
+    var nameB = _strBytes(f.name);
+    var data = f.data;
+    var crc = crc32(data);
+    var localHeader = [].concat(
+      _u32(0x04034b50), _u16(20), _u16(0), _u16(0), dtime, ddate,
+      _u32(crc), _u32(data.length), _u32(data.length),
+      _u16(nameB.length), _u16(0)
+    );
+    var lh = new Uint8Array(localHeader);
+    chunks.push(lh, nameB, data);
+    var localSize = lh.length + nameB.length + data.length;
+    var cd = [].concat(
+      _u32(0x02014b50), _u16(20), _u16(20), _u16(0), _u16(0), dtime, ddate,
+      _u32(crc), _u32(data.length), _u32(data.length),
+      _u16(nameB.length), _u16(0), _u16(0), _u16(0), _u16(0),
+      _u32(0), _u32(offset)
+    );
+    central.push({ head: new Uint8Array(cd), name: nameB });
+    offset += localSize;
+  });
+  var cdStart = offset, cdSize = 0;
+  central.forEach(function(c) { chunks.push(c.head, c.name); cdSize += c.head.length + c.name.length; });
+  var eocd = new Uint8Array([].concat(
+    _u32(0x06054b50), _u16(0), _u16(0),
+    _u16(files.length), _u16(files.length),
+    _u32(cdSize), _u32(cdStart), _u16(0)
+  ));
+  chunks.push(eocd);
+  return new Blob(chunks, { type: 'application/zip' });
+}
+
+// ============================================================
+// DOWNLOAD ALL — bundles log CSV + speaker library + raw audio +
+// chain-of-custody manifest into a single evidence .zip
+// ============================================================
+
+async function handleDownloadAll() {
+  var hasLog = detectionLog.length > 0;
+  var hasSpk = fingerprinter && Object.keys(fingerprinter.speakers).length > 0;
+  if (!hasLog && !hasSpk && !evidenceClip) { dbg('Nothing to bundle yet — run a scan first'); showVerify('<span style="color:var(--accent-amber)">No data to bundle yet — run a scan first</span>'); return; }
+  dbg('Building evidence ZIP...');
+  var stamp = formatFileDate();
+  var files = [];
+  var manifestItems = [];
+
+  // 1) Detection log CSV
+  if (hasLog) {
+    var csv = await buildLogCsv();
+    var csvBytes = _strBytes(csv);
+    files.push({ name: 'detection_log.csv', data: csvBytes });
+    manifestItems.push({ file: 'detection_log.csv', bytes: csvBytes.length, sha256: await sha256HexBytes(csvBytes), records: detectionLog.length });
+  }
+  // 2) Speaker library JSON
+  if (hasSpk) {
+    var sjson = await buildSpeakerJson();
+    var sBytes = _strBytes(sjson);
+    files.push({ name: 'speaker_library.json', data: sBytes });
+    manifestItems.push({ file: 'speaker_library.json', bytes: sBytes.length, sha256: await sha256HexBytes(sBytes), speakers: Object.keys(fingerprinter.speakers).length });
+  }
+  // 3) Raw session audio
+  if (evidenceClip) {
+    var ext = evidenceClip.mime.indexOf('mp4') >= 0 ? 'm4a' : evidenceClip.mime.indexOf('ogg') >= 0 ? 'ogg' : evidenceClip.mime.indexOf('webm') >= 0 ? 'webm' : 'audio';
+    var abuf = new Uint8Array(await evidenceClip.blob.arrayBuffer());
+    files.push({ name: 'session_audio.' + ext, data: abuf });
+    manifestItems.push({ file: 'session_audio.' + ext, bytes: abuf.length, sha256: evidenceClip.sha256, mime: evidenceClip.mime, started: evidenceClip.started, ended: evidenceClip.ended });
+  }
+
+  // 4) Chain-of-custody manifest
+  var manifest = {
+    format: 'VoiceForensics-EvidenceBundle-v1',
+    generated: new Date().toISOString(),
+    deviceId: getDeviceId(),
+    case: currentCaseInfo(),
+    app: { title: 'iPhone Voice Fingerprint Scanner', url: location.href.split('?')[0] },
+    sessions: JSON.parse(localStorage.getItem(STORAGE_KEYS.sessions) || '[]'),
+    contents: manifestItems
+  };
+  var manifestStr = JSON.stringify(manifest, null, 2);
+  // Manifest self-hash (over everything above)
+  var manifestHash = await sha256HexBytes(_strBytes(manifestStr));
+  var manifestFinal = JSON.stringify(Object.assign({}, manifest, { manifestSha256: manifestHash }), null, 2);
+  files.push({ name: 'manifest.json', data: _strBytes(manifestFinal) });
+
+  // 5) Human-readable README
+  var readme = 'VOICE FORENSICS EVIDENCE BUNDLE\n' +
+    '================================\n\n' +
+    'Generated: ' + manifest.generated + '\n' +
+    'Device ID: ' + manifest.deviceId + '\n' +
+    'Case ID:   ' + (manifest.case.caseId || '(none)') + '\n' +
+    'Operator:  ' + (manifest.case.operator || '(none)') + '\n' +
+    'Notes:     ' + (manifest.case.notes || '(none)') + '\n\n' +
+    'CONTENTS:\n' +
+    manifestItems.map(function(m) { return '  - ' + m.file + '  (' + m.bytes + ' bytes)\n      SHA-256: ' + (m.sha256 || 'n/a'); }).join('\n') + '\n\n' +
+    'INTEGRITY:\n' +
+    '  Each file above has a SHA-256 recorded in manifest.json.\n' +
+    '  Verify with:  shasum -a 256 <file>  and compare to manifest.json.\n' +
+    '  manifest.json self-hash (SHA-256): ' + manifestHash + '\n\n' +
+    'NOTE: Screening-grade voice biometrics. Not a substitute for court-\n' +
+    'validated ASV or expert examination. Use only with proper authorization.\n';
+  files.push({ name: 'README.txt', data: _strBytes(readme) });
+
+  // Build + download the zip
+  var zipBlob = makeZip(files);
+  var url = URL.createObjectURL(zipBlob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'voice_forensics_evidence_' + stamp + '.zip';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function() { URL.revokeObjectURL(url); }, 2000);
+  var kb = (zipBlob.size / 1024).toFixed(0);
+  dbg('Evidence ZIP ready: ' + files.length + ' files, ' + kb + 'KB');
+  showVerify('<div style="font-weight:700;color:var(--accent-green)">Evidence bundle exported</div>' +
+    '<div style="font-size:10px;margin-top:3px">' + files.length + ' files · ' + kb + 'KB · manifest SHA-256 ' + manifestHash.slice(0,12) + '…</div>' +
+    '<div style="font-size:9px;color:var(--text-dim);margin-top:2px">' + manifestItems.map(function(m){return m.file;}).join(', ') + ', manifest.json, README.txt</div>');
 }
 
 // Settings
