@@ -44,7 +44,37 @@
         "output_directory": "./scan_output",
         "save_results": true,
         "save_transcriptions": true,
-        "save_audio_segments": false
+        "save_audio_segments": true
+    },
+
+    "embedding": {
+        "model": "vfs-spectral-projection-v1",
+        "model_version": "1.0.0",
+        "dim": 256,
+        "l2_normalized": true,
+        "export_per_detection": true,
+        "export_per_speaker": true
+    },
+
+    "quality_control": {
+        "export_speech_seconds": true,
+        "export_voiced_fraction": true,
+        "export_clipping_pct": true,
+        "export_overlap_detected": true,
+        "export_reverb_flag": true,
+        "export_quality_score": true,
+        "min_quality_score": 0.3
+    },
+
+    "match_thresholds": {
+        "feature_strong": 0.85,
+        "feature_candidate": 0.70,
+        "feature_inconclusive": 0.55,
+        "embedding_strong": 0.85,
+        "embedding_candidate": 0.75,
+        "embedding_inconclusive": 0.65,
+        "cross_model_comparison": false,
+        "requires_listening_review": true
     },
     
     "integration": {
