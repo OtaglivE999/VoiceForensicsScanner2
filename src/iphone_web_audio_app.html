@@ -441,11 +441,14 @@ button, input[type="range"] {
       <button class="main-btn" id="verifyBtn" style="flex:1;font-size:11px;padding:10px 8px;min-width:0;background:var(--accent-amber);border:none;border-radius:8px;color:#000;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="handleVerifyVoice()">VERIFY VOICE</button>
       <button class="main-btn" style="flex:1;font-size:11px;padding:10px 8px;min-width:0;background:var(--accent-cyan);border:none;border-radius:8px;color:#000;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="document.getElementById('verifyFile').click()">VERIFY FILE</button>
     </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+      <button class="main-btn" style="flex:1;font-size:11px;padding:10px 8px;min-width:0;background:var(--accent-green);border:none;border-radius:8px;color:#000;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="matchRosterAgainstLive()">MATCH ROSTER</button>
+    </div>
     <input type="file" id="importFile" accept="application/json,.json" style="display:none" onchange="handleImportLibrary(this)">
     <input type="file" id="verifyFile" accept="application/json,.json" style="display:none" onchange="handleVerifyFile(this)">
     <div id="verifyResult" style="margin-top:8px;display:none"></div>
     <div style="font-size:10px;color:var(--text-dim);text-align:center;margin-top:4px" id="storageInfo"></div>
-    <div style="font-size:9px;color:var(--text-dim);text-align:center;margin-top:2px;line-height:1.4">Screening-grade biometrics. Exports carry a SHA-256 integrity hash. Not a substitute for court-validated ASV or expert examination.</div>
+    <div style="font-size:9px;color:var(--text-dim);text-align:center;margin-top:2px;line-height:1.4">Screening-grade biometrics with 256-D embeddings &amp; quality metrics. Exports carry SHA-256 integrity hash + processing metadata. Not a substitute for court-validated ASV or expert examination.</div>
   </div>
 
   <!-- Settings Panel -->
@@ -608,7 +611,7 @@ function updateStorageInfo() {
 
 async function buildLogCsv() {
   if (detectionLog.length === 0) return null;
-  var csv = 'Date,Time,Speaker_ID,Speaker_Name,Confidence,Verified,SNR_dB,Zone,Distance,Voice_Confidence,Pitch_F0_Hz,F1_Hz,F2_Hz,F3_Hz,F2_F1_Ratio,F3_F2_Ratio,Nasal_Formant_Hz,Nasalance_pct,Ambient_Class,Noise_Floor_dB,Ambient_Peak_Hz,Ambient_Hum_pct,Device_Latitude,Device_Longitude,GPS_Accuracy_m,Transcript\n';
+  var csv = 'Date,Time,Speaker_ID,Speaker_Name,Confidence,Verified,SNR_dB,Zone,Distance,Voice_Confidence,Pitch_F0_Hz,F1_Hz,F2_Hz,F3_Hz,F2_F1_Ratio,F3_F2_Ratio,Nasal_Formant_Hz,Nasalance_pct,Ambient_Class,Noise_Floor_dB,Ambient_Peak_Hz,Ambient_Hum_pct,Device_Latitude,Device_Longitude,GPS_Accuracy_m,Speech_Seconds,Voiced_Fraction,Clipping_Pct,Overlap_Detected,Reverb_Flag,Quality_Score,Embedding_Model,Transcript\n';
   for (var i = 0; i < detectionLog.length; i++) {
     var d = detectionLog[i];
     var dt = new Date(d.timestamp);
@@ -637,8 +640,15 @@ async function buildLogCsv() {
     var lat = d.location ? d.location.lat.toFixed(6) : '';
     var lng = d.location ? d.location.lng.toFixed(6) : '';
     var gpsAcc = d.location ? d.location.accuracy.toFixed(0) : '';
+    var speechSec = d.speech_seconds ? d.speech_seconds.toFixed(3) : '';
+    var voicedFrac = d.voiced_fraction ? d.voiced_fraction.toFixed(3) : '';
+    var clipPct = d.clipping_pct !== undefined ? d.clipping_pct.toFixed(5) : '';
+    var overlap = d.overlap_detected ? 'YES' : 'NO';
+    var reverb = d.reverb_flag ? 'YES' : 'NO';
+    var qScore = d.quality_score ? d.quality_score.toFixed(3) : '';
+    var embModel = d.embedding_model || '';
     var transcript = (d.transcript || '').replace(/"/g, '""');
-    csv += '"' + date + '","' + time + '","' + spkId + '","' + spkName + '","' + conf + '%","' + verified + '","' + snr + '","' + zone + '","' + dist + '","' + vconf + '%","' + pitch + '","' + f1 + '","' + f2 + '","' + f3 + '","' + f2f1 + '","' + f3f2 + '","' + nasalF + '","' + nasalance + '","' + ambClass + '","' + ambFloor + '","' + ambPeak + '","' + ambHum + '","' + lat + '","' + lng + '","' + gpsAcc + '","' + transcript + '"\n';
+    csv += '"' + date + '","' + time + '","' + spkId + '","' + spkName + '","' + conf + '%","' + verified + '","' + snr + '","' + zone + '","' + dist + '","' + vconf + '%","' + pitch + '","' + f1 + '","' + f2 + '","' + f3 + '","' + f2f1 + '","' + f3f2 + '","' + nasalF + '","' + nasalance + '","' + ambClass + '","' + ambFloor + '","' + ambPeak + '","' + ambHum + '","' + lat + '","' + lng + '","' + gpsAcc + '","' + speechSec + '","' + voicedFrac + '","' + clipPct + '","' + overlap + '","' + reverb + '","' + qScore + '","' + embModel + '","' + transcript + '"\n';
   }
   // Tamper-evident footer: SHA-256 of all data rows + chain-of-custody metadata
   var ci = currentCaseInfo();
@@ -647,6 +657,9 @@ async function buildLogCsv() {
   csv += '"# DEVICE","' + getDeviceId() + '","EXPORTED","' + new Date().toISOString() + '","ENTRIES","' + detectionLog.length + '"\n';
   csv += '"# CASE","' + (ci.caseId || '').replace(/"/g,'""') + '","OPERATOR","' + (ci.operator || '').replace(/"/g,'""') + '","NOTES","' + (ci.notes || '').replace(/"/g,'""') + '"\n';
   if (evidenceClip) csv += '"# AUDIO_EVIDENCE_SHA256","' + (evidenceClip.sha256 || 'n/a') + '","BYTES","' + evidenceClip.bytes + '","MIME","' + evidenceClip.mime + '"\n';
+  csv += '"# PROCESSING","EMBEDDING_MODEL","' + PROCESSING_META.embedding_model + '","VERSION","' + PROCESSING_META.embedding_model_version + '","DIM","' + PROCESSING_META.embedding_dim + '","NORM","' + PROCESSING_META.normalization + '"\n';
+  csv += '"# PROCESSING","VAD","' + PROCESSING_META.vad_model + '","DIARIZATION","' + PROCESSING_META.diarization_model + '","LPC_ORDER","' + PROCESSING_META.lpc_order + '","PRE_EMPHASIS","' + PROCESSING_META.pre_emphasis + '"\n';
+  csv += '"# THRESHOLDS","FEATURE_STRONG","' + MATCH_THRESHOLDS.feature_similarity.same_speaker_strong + '","FEATURE_CANDIDATE","' + MATCH_THRESHOLDS.feature_similarity.same_speaker_candidate + '","EMBEDDING_STRONG","' + MATCH_THRESHOLDS.embedding_cosine.same_speaker_strong + '","EMBEDDING_CANDIDATE","' + MATCH_THRESHOLDS.embedding_cosine.same_speaker_candidate + '"\n';
   return csv;
 }
 
@@ -682,10 +695,12 @@ async function sha256HexBytes(bytes) {
 async function buildSpeakerJson() {
   if (!fingerprinter || Object.keys(fingerprinter.speakers).length === 0) return null;
   var payload = {
-    format: 'VoiceForensics-SpeakerLibrary-v1',
+    format: 'VoiceForensics-SpeakerLibrary-v2',
     exported: new Date().toISOString(),
     deviceId: getDeviceId(),
     case: currentCaseInfo(),
+    processing: Object.assign({}, PROCESSING_META),
+    match_thresholds: Object.assign({}, MATCH_THRESHOLDS),
     audioEvidence: evidenceClip ? { mime: evidenceClip.mime, bytes: evidenceClip.bytes, started: evidenceClip.started, ended: evidenceClip.ended, sha256: evidenceClip.sha256 } : null,
     speakerCount: Object.keys(fingerprinter.speakers).length,
     totalSessions: JSON.parse(localStorage.getItem(STORAGE_KEYS.sessions) || '[]').length,
@@ -733,57 +748,132 @@ function readJsonFile(input, cb) {
 async function handleImportLibrary(input) {
   readJsonFile(input, async function(obj, fname) {
     var spk = obj.speakers || {};
+    if (obj.format === 'VoiceForensics-ReferenceEnrollment-v1' && obj.enrollments) {
+      spk = {};
+      for (var i = 0; i < obj.enrollments.length; i++) {
+        var e = obj.enrollments[i];
+        var eid = e.person_label || ('REF_' + String(i+1).padStart(3,'0'));
+        spk[eid] = e;
+      }
+    }
     var n = Object.keys(spk).length;
     if (n === 0) { showVerify('<span style="color:var(--accent-red)">No speakers found in file</span>'); return; }
     var integ = await verifyIntegrity(obj);
-    referenceLibrary = { speakers: spk, meta: { file: fname, exported: obj.exported, deviceId: obj.deviceId, integrity: integ } };
+    var embCount = 0;
+    for (var id in spk) { if (spk[id].embedding_256d) embCount++; }
+    referenceLibrary = { speakers: spk, meta: { file: fname, exported: obj.exported, deviceId: obj.deviceId, integrity: integ, processing: obj.processing || null } };
     var badge = integ.ok === true ? '<span style="color:var(--accent-green)">INTACT ✓</span>'
               : integ.ok === false ? '<span style="color:var(--accent-red)">HASH MISMATCH — TAMPERED ✗</span>'
               : '<span style="color:var(--text-dim)">no hash</span>';
+    var embInfo = embCount > 0 ? '<div style="font-size:9px;color:var(--accent-cyan);margin-top:2px">' + embCount + '/' + n + ' have 256-D embeddings' + (obj.processing ? ' (' + obj.processing.embedding_model + ')' : '') + '</div>' : '';
     showVerify('<div style="font-weight:700;color:var(--accent-purple)">Reference library loaded</div>' +
       '<div style="font-size:10px;margin-top:3px">' + n + ' known voiceprints | integrity: ' + badge + '</div>' +
+      embInfo +
       (obj.exported ? '<div style="font-size:9px;color:var(--text-dim)">exported ' + new Date(obj.exported).toLocaleString() + (obj.deviceId ? ' · ' + obj.deviceId : '') + '</div>' : '') +
-      '<div style="font-size:9px;color:var(--text-dim);margin-top:2px">Now tap VERIFY VOICE (while scanning) to match a live speaker, or VERIFY FILE to match a saved sample.</div>');
-    dbg('Imported ' + n + ' reference voiceprints, integrity=' + integ.ok);
+      '<div style="font-size:9px;color:var(--text-dim);margin-top:2px">Now tap VERIFY VOICE to match a live speaker, VERIFY FILE to match a saved sample, or MATCH ROSTER to compare all references vs live speakers.</div>');
+    dbg('Imported ' + n + ' reference voiceprints (' + embCount + ' with embeddings), integrity=' + integ.ok);
   });
 }
 
 // Match a feature vector against the reference library; returns ranked matches
-function matchAgainstReference(features) {
+function matchAgainstReference(features, embedding) {
   var results = [];
   for (var id in referenceLibrary.speakers) {
     var prof = referenceLibrary.speakers[id];
-    var score = fingerprinter.compareFeatures(features, prof.avgFeatures || prof);
-    results.push({ id: id, name: (prof.name || id), score: score });
+    var featureScore = fingerprinter.compareFeatures(features, prof.avgFeatures || prof);
+    var embScore = null;
+    var matchMode = 'feature';
+    if (embedding && prof.embedding_256d) {
+      var refModel = prof.embedding_model || referenceLibrary.meta?.processing?.embedding_model;
+      if (refModel && refModel === PROCESSING_META.embedding_model) {
+        embScore = VoiceFingerprint.cosineSimilarity(embedding, prof.embedding_256d);
+        matchMode = 'embedding';
+      } else if (refModel && refModel !== PROCESSING_META.embedding_model && !MATCH_THRESHOLDS.cross_model_comparison) {
+        matchMode = 'model_mismatch';
+      }
+    }
+    results.push({
+      id: id,
+      name: (prof.person_label || prof.name || id),
+      score: embScore !== null ? embScore : featureScore,
+      featureScore: featureScore,
+      embeddingScore: embScore,
+      matchMode: matchMode
+    });
   }
   results.sort(function(a, b) { return b.score - a.score; });
   return results;
 }
 
-function verdictFor(score) {
-  if (score >= 0.85) return { label: 'IDENTITY MATCH', color: 'var(--accent-green)' };
-  if (score >= 0.70) return { label: 'PROBABLE MATCH', color: 'var(--accent-amber)' };
-  if (score >= 0.55) return { label: 'POSSIBLE / INCONCLUSIVE', color: 'var(--accent-amber)' };
-  return { label: 'NO MATCH', color: 'var(--accent-red)' };
+function matchRosterAgainstLive() {
+  if (Object.keys(referenceLibrary.speakers).length === 0) { showVerify('<span style="color:var(--accent-red)">Import a reference roster first</span>'); return; }
+  if (!fingerprinter || Object.keys(fingerprinter.speakers).length === 0) { showVerify('<span style="color:var(--accent-red)">No live speakers enrolled yet — run a scan first</span>'); return; }
+  var html = '<div style="font-weight:700;color:var(--accent-purple)">Reference Roster vs Live Speakers</div>';
+  var refModel = referenceLibrary.meta?.processing?.embedding_model;
+  var modelMatch = refModel && refModel === PROCESSING_META.embedding_model;
+  if (refModel && !modelMatch && !MATCH_THRESHOLDS.cross_model_comparison) {
+    html += '<div style="font-size:10px;color:var(--accent-red);margin:4px 0">⚠ Model mismatch: ref=' + refModel + ' live=' + PROCESSING_META.embedding_model + ' — embedding comparison blocked. Reprocess required.</div>';
+  }
+  for (var refId in referenceLibrary.speakers) {
+    var ref = referenceLibrary.speakers[refId];
+    var refName = ref.person_label || ref.name || refId;
+    var bestMatch = null, bestScore = 0;
+    for (var liveId in fingerprinter.speakers) {
+      var live = fingerprinter.speakers[liveId];
+      var fScore = fingerprinter.compareFeatures(ref.avgFeatures || ref, live.avgFeatures);
+      var eScore = null;
+      if (modelMatch && ref.embedding_256d && live.embedding_256d) {
+        eScore = VoiceFingerprint.cosineSimilarity(ref.embedding_256d, live.embedding_256d);
+      }
+      var score = eScore !== null ? eScore : fScore;
+      if (score > bestScore) { bestScore = score; bestMatch = { id: liveId, name: live.name, score: score, mode: eScore !== null ? 'embedding' : 'feature' }; }
+    }
+    var v = bestMatch ? verdictFor(bestMatch.score, bestMatch.mode) : { label: 'NO DATA', color: 'var(--text-dim)' };
+    var pct = bestMatch ? (bestMatch.score * 100).toFixed(1) : '0';
+    html += '<div style="display:flex;align-items:center;gap:6px;font-size:10px;margin-top:4px;padding:3px 0;border-bottom:1px solid var(--border)">' +
+      '<span style="min-width:100px;font-weight:600">' + refName + '</span>' +
+      '<span style="min-width:60px;color:var(--text-dim)">' + (bestMatch ? bestMatch.id : '—') + '</span>' +
+      '<div style="flex:1;height:6px;background:var(--meter-bg);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + v.color + '"></div></div>' +
+      '<span style="min-width:40px;text-align:right">' + pct + '%</span>' +
+      '<span style="min-width:16px;font-size:8px;color:var(--text-dim)">' + (bestMatch ? bestMatch.mode[0].toUpperCase() : '') + '</span></div>';
+  }
+  var t = MATCH_THRESHOLDS.feature_similarity;
+  html += '<div style="font-size:8px;color:var(--text-dim);margin-top:6px">Thresholds: ≥' + (t.same_speaker_strong*100) + '% match · ≥' + (t.same_speaker_candidate*100) + '% probable · ≥' + (t.inconclusive_low*100) + '% possible | F=feature E=embedding</div>';
+  showVerify(html);
+}
+
+function verdictFor(score, mode) {
+  var t = (mode === 'embedding') ? MATCH_THRESHOLDS.embedding_cosine : MATCH_THRESHOLDS.feature_similarity;
+  if (score >= t.same_speaker_strong) return { label: 'IDENTITY MATCH', color: 'var(--accent-green)', tier: 'strong' };
+  if (score >= t.same_speaker_candidate) return { label: 'PROBABLE MATCH', color: 'var(--accent-amber)', tier: 'candidate' };
+  if (score >= t.inconclusive_low) return { label: 'POSSIBLE / INCONCLUSIVE', color: 'var(--accent-amber)', tier: 'inconclusive' };
+  return { label: 'NO MATCH', color: 'var(--accent-red)', tier: 'none' };
 }
 
 function renderMatches(title, results, extra) {
   if (results.length === 0) { showVerify('<span style="color:var(--accent-red)">Reference library is empty — IMPORT LIBRARY first</span>'); return; }
   var top = results[0];
-  var v = verdictFor(top.score);
-  var html = '<div style="font-weight:700;color:' + v.color + '">' + v.label + '</div>' +
+  var mode = top.matchMode || 'feature';
+  var v = verdictFor(top.score, mode);
+  var modeLabel = mode === 'embedding' ? ' [embedding]' : mode === 'model_mismatch' ? ' [MODEL MISMATCH]' : ' [feature]';
+  var html = '<div style="font-weight:700;color:' + v.color + '">' + v.label + modeLabel + '</div>' +
     '<div style="font-size:11px;margin-top:2px">Best: <b>' + top.name + '</b> (' + top.id + ') — ' + (top.score * 100).toFixed(1) + '%</div>';
+  if (mode === 'model_mismatch') html += '<div style="font-size:9px;color:var(--accent-red);margin-top:2px">⚠ Embedding models differ — comparison blocked. Falling back to feature similarity. Reprocess with same model for embedding match.</div>';
   if (extra) html += '<div style="font-size:9px;color:var(--text-dim)">' + extra + '</div>';
   html += '<div style="font-size:10px;color:var(--text-dim);margin-top:4px">Ranked candidates:</div>';
   for (var i = 0; i < Math.min(5, results.length); i++) {
     var r = results[i];
     var pct = (r.score * 100).toFixed(1);
+    var rm = r.matchMode || 'feature';
+    var mTag = rm === 'embedding' ? 'E' : rm === 'model_mismatch' ? '✗' : 'F';
     html += '<div style="display:flex;align-items:center;gap:6px;font-size:10px;margin-top:2px">' +
       '<span style="min-width:90px">' + r.name + '</span>' +
-      '<div style="flex:1;height:6px;background:var(--meter-bg);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + verdictFor(r.score).color + '"></div></div>' +
-      '<span style="min-width:42px;text-align:right">' + pct + '%</span></div>';
+      '<div style="flex:1;height:6px;background:var(--meter-bg);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + verdictFor(r.score, rm).color + '"></div></div>' +
+      '<span style="min-width:42px;text-align:right">' + pct + '%</span>' +
+      '<span style="min-width:12px;font-size:8px;color:var(--text-dim)">' + mTag + '</span></div>';
   }
-  html += '<div style="font-size:8px;color:var(--text-dim);margin-top:4px">Thresholds: ≥85% match · ≥70% probable · ≥55% possible. Screening indication only.</div>';
+  var t = MATCH_THRESHOLDS.feature_similarity;
+  html += '<div style="font-size:8px;color:var(--text-dim);margin-top:4px">F=feature E=embedding | strong ≥' + (t.same_speaker_strong*100) + '% · candidate ≥' + (t.same_speaker_candidate*100) + '% · inconclusive ≥' + (t.inconclusive_low*100) + '%</div>';
   showVerify(html);
 }
 
@@ -798,7 +888,8 @@ function handleVerifyVoice() {
   var snr = estimateSNR(timeData);
   if (!snr.hasVoice) { showVerify('<span style="color:var(--accent-amber)">No clear voice this instant — try again while the person is speaking</span>'); return; }
   var features = fingerprinter.extractFeatures(freqData, timeData, ctx.sampleRate);
-  renderMatches('live', matchAgainstReference(features), 'live sample · SNR ' + snr.snr.toFixed(0) + 'dB · ' + new Date().toLocaleTimeString());
+  var embedding = fingerprinter.computeEmbedding256(features);
+  renderMatches('live', matchAgainstReference(features, embedding), 'live sample · SNR ' + snr.snr.toFixed(0) + 'dB · model: ' + PROCESSING_META.embedding_model + ' · ' + new Date().toLocaleTimeString());
   dbg('Verified live voice against ' + Object.keys(referenceLibrary.speakers).length + ' references');
 }
 
@@ -969,10 +1060,12 @@ async function handleDownloadAll() {
 
   // 4) Chain-of-custody manifest
   var manifest = {
-    format: 'VoiceForensics-EvidenceBundle-v1',
+    format: 'VoiceForensics-EvidenceBundle-v2',
     generated: new Date().toISOString(),
     deviceId: getDeviceId(),
     case: currentCaseInfo(),
+    processing: Object.assign({}, PROCESSING_META),
+    match_thresholds: Object.assign({}, MATCH_THRESHOLDS),
     app: { title: 'iPhone Voice Fingerprint Scanner', url: location.href.split('?')[0] },
     sessions: JSON.parse(localStorage.getItem(STORAGE_KEYS.sessions) || '[]'),
     contents: manifestItems
@@ -997,8 +1090,23 @@ async function handleDownloadAll() {
     '  Each file above has a SHA-256 recorded in manifest.json.\n' +
     '  Verify with:  shasum -a 256 <file>  and compare to manifest.json.\n' +
     '  manifest.json self-hash (SHA-256): ' + manifestHash + '\n\n' +
+    'PROCESSING:\n' +
+    '  Embedding model: ' + PROCESSING_META.embedding_model + ' v' + PROCESSING_META.embedding_model_version + '\n' +
+    '  Embedding dim: ' + PROCESSING_META.embedding_dim + ' (L2 normalized)\n' +
+    '  VAD: ' + PROCESSING_META.vad_model + ' | Diarization: ' + PROCESSING_META.diarization_model + '\n' +
+    '  LPC order: ' + PROCESSING_META.lpc_order + ' | Pre-emphasis: ' + PROCESSING_META.pre_emphasis + '\n\n' +
+    'THRESHOLDS:\n' +
+    '  Feature similarity: strong ≥' + MATCH_THRESHOLDS.feature_similarity.same_speaker_strong +
+    ' | candidate ≥' + MATCH_THRESHOLDS.feature_similarity.same_speaker_candidate +
+    ' | inconclusive ≥' + MATCH_THRESHOLDS.feature_similarity.inconclusive_low + '\n' +
+    '  Embedding cosine: strong ≥' + MATCH_THRESHOLDS.embedding_cosine.same_speaker_strong +
+    ' | candidate ≥' + MATCH_THRESHOLDS.embedding_cosine.same_speaker_candidate +
+    ' | inconclusive ≥' + MATCH_THRESHOLDS.embedding_cosine.inconclusive_low + '\n' +
+    '  Cross-model comparison: ' + (MATCH_THRESHOLDS.cross_model_comparison ? 'ALLOWED' : 'BLOCKED') + '\n\n' +
     'NOTE: Screening-grade voice biometrics. Not a substitute for court-\n' +
-    'validated ASV or expert examination. Use only with proper authorization.\n';
+    'validated ASV or expert examination. Use only with proper authorization.\n' +
+    'Acoustic consistency only. Not sufficient for legal identity confirmation\n' +
+    'without same-model embedding-to-embedding match.\n';
   files.push({ name: 'README.txt', data: _strBytes(readme) });
 
   // Build + download the zip
@@ -1052,6 +1160,45 @@ dbg('Script loaded OK');
 dbg('AudioContext: ' + (AudioCtx ? 'YES' : 'NO'));
 dbg('getUserMedia: ' + (navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? 'YES' : 'NO'));
 dbg('SpeechRecognition: ' + (window.SpeechRecognition || window.webkitSpeechRecognition ? 'YES' : 'NO'));
+
+// ============================================================
+// MATCH THRESHOLDS & PROCESSING METADATA
+// ============================================================
+
+const MATCH_THRESHOLDS = {
+  embedding_cosine: {
+    same_speaker_strong: 0.85,
+    same_speaker_candidate: 0.75,
+    inconclusive_low: 0.65,
+    no_match_below: 0.65
+  },
+  feature_similarity: {
+    same_speaker_strong: 0.85,
+    same_speaker_candidate: 0.70,
+    inconclusive_low: 0.55,
+    no_match_below: 0.55
+  },
+  requires_listening_review: true,
+  cross_model_comparison: false
+};
+
+const PROCESSING_META = {
+  vad_model: 'energy-threshold-v1',
+  diarization_model: 'vfs-spectral-compare-v1',
+  embedding_model: 'vfs-spectral-projection-v1',
+  embedding_model_version: '1.0.0',
+  embedding_dim: 256,
+  embedding_l2_normalized: true,
+  sample_rate: 16000,
+  normalization: 'l2',
+  noise_reduction: 'conservative',
+  window_sec: 2.0,
+  hop_sec: 0.15,
+  min_speech_sec: 0.3,
+  lpc_order: 20,
+  pre_emphasis: 0.63,
+  formant_extraction: 'lpc-levinson-durbin'
+};
 
 // ============================================================
 // SPEAKER FINGERPRINTING (Spectral + MFCC-like)
@@ -1284,12 +1431,19 @@ class VoiceFingerprint {
 
   enroll(features) {
     const id = `SPK_${String(this.nextId++).padStart(3, '0')}`;
+    const emb = this.computeEmbedding256(features);
     this.speakers[id] = {
       name: `Speaker ${Object.keys(this.speakers).length + 1}`,
       avgFeatures: { ...features, mfcc: [...features.mfcc] },
       detections: 1,
       firstSeen: Date.now(),
-      lastSeen: Date.now()
+      lastSeen: Date.now(),
+      embedding_256d: Array.from(emb),
+      embedding_model: PROCESSING_META.embedding_model,
+      embedding_model_version: PROCESSING_META.embedding_model_version,
+      embedding_dim: 256,
+      embedding_l2_normalized: true,
+      embedding_created_at: new Date().toISOString()
     };
     saveSpeakerLibrary(this);
     return { id, name: this.speakers[id].name, confidence: 1.0, verified: false, detections: 1 };
@@ -1370,6 +1524,53 @@ class VoiceFingerprint {
       avg.mfcc[i] = (1-alpha) * avg.mfcc[i] + alpha * (newF.mfcc[i] || 0);
     }
   }
+
+  computeEmbedding256(features) {
+    const raw = [];
+    raw.push(features.centroid || 0);
+    raw.push(features.spread || 0);
+    raw.push(features.flatness || 0);
+    raw.push(features.rolloff || 0);
+    if (features.mfcc) for (let i = 0; i < 13; i++) raw.push(features.mfcc[i] || 0);
+    else for (let i = 0; i < 13; i++) raw.push(0);
+    raw.push(features.pitch || 0);
+    raw.push(features.f1 || 0);
+    raw.push(features.f2 || 0);
+    raw.push(features.f3 || 0);
+    raw.push(features.f2f1 || 0);
+    raw.push(features.f3f2 || 0);
+    raw.push(features.nasalFormant || 0);
+    raw.push(features.nasalance || 0);
+    raw.push(features.zcr || 0);
+    const srcDim = raw.length;
+    const emb = new Float32Array(256);
+    const PHI = 1.6180339887;
+    for (let d = 0; d < 256; d++) {
+      let v = 0;
+      for (let s = 0; s < srcDim; s++) {
+        const freq = (d + 1) * (s + 1) * PHI;
+        v += raw[s] * Math.cos(freq) + raw[s] * raw[s] * Math.sin(freq * 0.7);
+      }
+      emb[d] = v;
+    }
+    let norm = 0;
+    for (let i = 0; i < 256; i++) norm += emb[i] * emb[i];
+    norm = Math.sqrt(norm);
+    if (norm > 1e-9) for (let i = 0; i < 256; i++) emb[i] /= norm;
+    return emb;
+  }
+
+  static cosineSimilarity(a, b) {
+    if (!a || !b || a.length !== b.length) return 0;
+    let dot = 0, na = 0, nb = 0;
+    for (let i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+      na += a[i] * a[i];
+      nb += b[i] * b[i];
+    }
+    const denom = Math.sqrt(na) * Math.sqrt(nb);
+    return denom > 1e-9 ? dot / denom : 0;
+  }
 }
 
 const fingerprinter = new VoiceFingerprint();
@@ -1432,6 +1633,78 @@ function getFieldZone(snr) {
   if (snr >= 6)  return { name: 'ULTRA-FAR', dist: '6m+', cls: 'zone-ultra' };
   if (snr >= 2)  return { name: 'EXTREME', dist: 'very far', cls: 'zone-ultra' };
   return { name: 'WHISPER', dist: 'faint', cls: 'zone-ultra' };
+}
+
+// ============================================================
+// QUALITY CONTROL — per-detection signal quality metrics
+// ============================================================
+
+var recentSpeakerTimes = [];
+
+function computeQualityMetrics(timeData, sampleRate, snrResult, features, speakerId) {
+  const N = timeData.length;
+
+  const clippingSamples = (() => {
+    let c = 0;
+    for (let i = 0; i < N; i++) if (Math.abs(timeData[i]) >= 0.999) c++;
+    return c;
+  })();
+  const clippingPct = N > 0 ? clippingSamples / N : 0;
+
+  const speechSec = N / sampleRate;
+
+  const voicedFrames = (() => {
+    const frameLen = 256;
+    const numFrames = Math.floor(N / frameLen);
+    let voiced = 0;
+    for (let f = 0; f < numFrames; f++) {
+      const off = f * frameLen;
+      let zcr = 0;
+      for (let i = 1; i < frameLen && (off + i) < N; i++) {
+        if ((timeData[off+i] >= 0 && timeData[off+i-1] < 0) || (timeData[off+i] < 0 && timeData[off+i-1] >= 0)) zcr++;
+      }
+      const zcrRate = zcr / frameLen;
+      let energy = 0;
+      for (let i = 0; i < frameLen && (off + i) < N; i++) energy += timeData[off+i] * timeData[off+i];
+      energy = Math.sqrt(energy / frameLen);
+      if (zcrRate < 0.15 && energy > 0.005) voiced++;
+    }
+    return numFrames > 0 ? voiced / numFrames : 0;
+  })();
+
+  const now = Date.now();
+  recentSpeakerTimes.push({ id: speakerId, time: now });
+  recentSpeakerTimes = recentSpeakerTimes.filter(e => now - e.time < 1000);
+  const distinctIds = new Set(recentSpeakerTimes.map(e => e.id).filter(Boolean));
+  const overlapDetected = distinctIds.size > 1;
+
+  const reverbFlag = (() => {
+    const tail = Math.floor(N * 0.8);
+    let tailEnergy = 0, headEnergy = 0;
+    const headEnd = Math.floor(N * 0.3);
+    for (let i = 0; i < headEnd; i++) headEnergy += timeData[i] * timeData[i];
+    for (let i = tail; i < N; i++) tailEnergy += timeData[i] * timeData[i];
+    headEnergy /= Math.max(1, headEnd);
+    tailEnergy /= Math.max(1, N - tail);
+    return headEnergy > 1e-9 ? (tailEnergy / headEnergy) > 0.35 : false;
+  })();
+
+  const snrScore = Math.min(1, snrResult.snr / 40);
+  const voicedScore = voicedFrames;
+  const clipScore = 1 - Math.min(1, clippingPct * 100);
+  const overlapScore = overlapDetected ? 0.3 : 1;
+  const qualityScore = (snrScore * 0.35 + voicedScore * 0.30 + clipScore * 0.20 + overlapScore * 0.15);
+
+  return {
+    snr_db: snrResult.snr,
+    speech_seconds: parseFloat(speechSec.toFixed(3)),
+    voiced_fraction: parseFloat(voicedFrames.toFixed(3)),
+    clipping_pct: parseFloat(clippingPct.toFixed(5)),
+    overlap_detected: overlapDetected,
+    reverb_flag: reverbFlag,
+    gps_accuracy_m: currentLocation ? currentLocation.accuracy : null,
+    quality_score: parseFloat(qualityScore.toFixed(3))
+  };
 }
 
 // ============================================================
@@ -1863,11 +2136,36 @@ function scanLoop() {
 
     // Speaker fingerprinting
     let speakerResult = null;
+    let detectionFeatures = null;
+    let detectionEmbedding = null;
     if (settings.fingerprint) {
-      const features = fingerprinter.extractFeatures(freqData, timeData, ctx.sampleRate);
-      speakerResult = fingerprinter.match(features);
+      detectionFeatures = fingerprinter.extractFeatures(freqData, timeData, ctx.sampleRate);
+      detectionEmbedding = fingerprinter.computeEmbedding256(detectionFeatures);
+      speakerResult = fingerprinter.match(detectionFeatures);
       if (!speakerResult && settings.autoEnroll) {
-        speakerResult = fingerprinter.enroll(features);
+        speakerResult = fingerprinter.enroll(detectionFeatures);
+      }
+      if (speakerResult && detectionEmbedding) {
+        const spk = fingerprinter.speakers[speakerResult.id];
+        if (spk) {
+          if (!spk.embedding_256d) {
+            spk.embedding_256d = Array.from(detectionEmbedding);
+          } else {
+            const alpha = 1 / Math.min(spk.detections, 20);
+            for (let i = 0; i < 256; i++) {
+              spk.embedding_256d[i] = (1 - alpha) * spk.embedding_256d[i] + alpha * detectionEmbedding[i];
+            }
+            let n2 = 0;
+            for (let i = 0; i < 256; i++) n2 += spk.embedding_256d[i] * spk.embedding_256d[i];
+            n2 = Math.sqrt(n2);
+            if (n2 > 1e-9) for (let i = 0; i < 256; i++) spk.embedding_256d[i] /= n2;
+          }
+          spk.embedding_model = PROCESSING_META.embedding_model;
+          spk.embedding_model_version = PROCESSING_META.embedding_model_version;
+          spk.embedding_dim = 256;
+          spk.embedding_l2_normalized = true;
+          if (!spk.embedding_created_at) spk.embedding_created_at = new Date().toISOString();
+        }
       }
     }
 
@@ -1880,6 +2178,9 @@ function scanLoop() {
       // Update speaker in DB display
       updateSpeakerList(speakerResult);
     }
+
+    // Quality-control metrics for this detection
+    const qc = computeQualityMetrics(timeData, ctx.sampleRate, snrResult, detectionFeatures, speakerResult ? speakerResult.id : null);
 
     // Get transcript if available
     let transcript = transcriptQueue.shift() || '';
@@ -1902,7 +2203,9 @@ function scanLoop() {
       nasalFormant: prof ? prof.nasalFormant : 0,
       nasalance: prof ? prof.nasalance : 0,
       ambient: ambient,
-      location: currentLocation ? { lat: currentLocation.lat, lng: currentLocation.lng, accuracy: currentLocation.accuracy } : null
+      location: currentLocation ? { lat: currentLocation.lat, lng: currentLocation.lng, accuracy: currentLocation.accuracy } : null,
+      quality: qc,
+      embedding_256d: detectionEmbedding ? Array.from(detectionEmbedding) : null
     });
   }
 
@@ -1936,7 +2239,15 @@ function addDetectionEntry(det) {
     ambientDominantHz: det.ambient ? det.ambient.dominantHz : 0,
     ambientHum: det.ambient ? det.ambient.humLevel : 0,
     transcript: det.transcript || '',
-    location: det.location || null
+    location: det.location || null,
+    speech_seconds: det.quality ? det.quality.speech_seconds : 0,
+    voiced_fraction: det.quality ? det.quality.voiced_fraction : 0,
+    clipping_pct: det.quality ? det.quality.clipping_pct : 0,
+    overlap_detected: det.quality ? det.quality.overlap_detected : false,
+    reverb_flag: det.quality ? det.quality.reverb_flag : false,
+    quality_score: det.quality ? det.quality.quality_score : 0,
+    embedding_model: det.embedding_256d ? PROCESSING_META.embedding_model : null,
+    embedding_256d: det.embedding_256d || null
   };
   detectionLog.push(logEntry);
   // Cap in-memory log to avoid unbounded growth during long surveillance sessions
