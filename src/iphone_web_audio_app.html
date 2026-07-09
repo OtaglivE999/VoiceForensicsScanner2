@@ -2004,9 +2004,11 @@ async function startScanning() {
   }
 }
 
-function stopScanning() {
+async function stopScanning() {
   isScanning = false;
   if (recognition) { try { recognition.abort(); } catch(e){} recognition = null; }
+  var hadRecorder = mediaRecorder && mediaRecorder.state !== 'inactive';
+  var recorderDone = hadRecorder ? new Promise(function(resolve) { _onEvidenceFinalized = resolve; }) : Promise.resolve();
   stopEvidenceRecorder();
   if (stream) stream.getTracks().forEach(t => t.stop());
   if (ctx) ctx.close();
@@ -2019,6 +2021,14 @@ function stopScanning() {
   saveSpeakerLibrary(fingerprinter);
   updateStorageInfo();
   dbg('Data saved to device storage');
+  var hasData = detectionLog.length > 0 || (fingerprinter && Object.keys(fingerprinter.speakers).length > 0);
+  if (hasData) {
+    $('headerMeta').textContent = 'PACKAGING EVIDENCE…';
+    if (hadRecorder) { dbg('Waiting for audio evidence to finalize…'); await recorderDone; }
+    await handleDownloadAll();
+    $('headerMeta').textContent = 'STOPPED — ZIP DOWNLOADED';
+    dbg('Evidence ZIP auto-downloaded on stop');
+  }
 }
 
 // ============================================================
@@ -2028,6 +2038,7 @@ function stopScanning() {
 var mediaRecorder = null;
 var recordedChunks = [];
 var evidenceClip = null; // { blob, url, mime, bytes, started, ended, sha256 }
+var _onEvidenceFinalized = null;
 
 function pickAudioMime() {
   if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
@@ -2073,6 +2084,7 @@ async function finalizeEvidenceClip() {
   var kb = (blob.size / 1024).toFixed(0);
   dbg('Evidence clip ready: ' + kb + 'KB ' + mime + ' (SHA-256 ' + (hash ? hash.slice(0, 12) + '…' : 'n/a') + ')');
   updateEvidenceButton();
+  if (_onEvidenceFinalized) { var cb = _onEvidenceFinalized; _onEvidenceFinalized = null; cb(); }
 }
 
 function updateEvidenceButton() {
