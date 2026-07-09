@@ -552,6 +552,14 @@ var speakers = {};
 var detectionLog = [];
 var energyHistory = [];
 var sessionStartFull = null;
+
+// Per-speaker audio capture — PCM ring buffer + per-speaker clips
+var pcmRingBuffer = null;
+var pcmWritePos = 0;
+var pcmBufferSamples = 0;
+var speakerAudioClips = {}; // { speakerId: [{ pcm: Float32Array, timestamp: number }] }
+var PCM_CLIP_SECONDS = 2;
+var PCM_MAX_CLIPS_PER_SPEAKER = 30;
 var lastAmbient = null;
 
 // ============================================================
@@ -1058,7 +1066,20 @@ async function handleDownloadAll() {
     manifestItems.push({ file: 'session_audio.' + ext, bytes: abuf.length, sha256: evidenceClip.sha256, mime: evidenceClip.mime, started: evidenceClip.started, ended: evidenceClip.ended });
   }
 
-  // 4) Chain-of-custody manifest
+  // 4) Per-speaker audio WAV files
+  var speakerIds = Object.keys(speakerAudioClips);
+  for (var si = 0; si < speakerIds.length; si++) {
+    var spkId = speakerIds[si];
+    var result = buildSpeakerCombinedWav(spkId);
+    if (!result) continue;
+    var spkName = (fingerprinter && fingerprinter.speakers[spkId]) ? fingerprinter.speakers[spkId].name.replace(/[^a-zA-Z0-9_-]/g, '_') : spkId;
+    var wavName = 'speakers/' + spkId + '_' + spkName + '.wav';
+    var wavHash = await sha256HexBytes(result.wav);
+    files.push({ name: wavName, data: result.wav });
+    manifestItems.push({ file: wavName, bytes: result.wav.length, sha256: wavHash, speaker: spkId, clips: result.clips, duration_seconds: result.seconds });
+  }
+
+  // 5) Chain-of-custody manifest
   var manifest = {
     format: 'VoiceForensics-EvidenceBundle-v2',
     generated: new Date().toISOString(),
@@ -1970,6 +1991,9 @@ async function startScanning() {
       source.connect(analyser);
     }
 
+    initPcmRingBuffer(ctx.sampleRate);
+    speakerAudioClips = {};
+
     isScanning = true;
     scanStartTime = Date.now();
     sessionStartFull = new Date();
@@ -2014,6 +2038,7 @@ async function stopScanning() {
   if (ctx) ctx.close();
   if (animFrame) cancelAnimationFrame(animFrame);
   stream = null; ctx = null; source = null; analyser = null; processorNode = null;
+  pcmRingBuffer = null; pcmWritePos = 0;
   if (geoWatchId !== null) { navigator.geolocation.clearWatch(geoWatchId); geoWatchId = null; }
   updateMainUI();
   $('headerMeta').textContent = 'STOPPED';
@@ -2109,6 +2134,85 @@ function handleDownloadAudio() {
 }
 
 // ============================================================
+// PER-SPEAKER AUDIO CAPTURE
+// ============================================================
+
+function initPcmRingBuffer(sampleRate) {
+  var bufSeconds = 10;
+  pcmBufferSamples = sampleRate * bufSeconds;
+  pcmRingBuffer = new Float32Array(pcmBufferSamples);
+  pcmWritePos = 0;
+}
+
+function feedPcmRing(samples) {
+  if (!pcmRingBuffer) return;
+  for (var i = 0; i < samples.length; i++) {
+    pcmRingBuffer[pcmWritePos] = samples[i];
+    pcmWritePos = (pcmWritePos + 1) % pcmBufferSamples;
+  }
+}
+
+function slicePcmClip(sampleRate) {
+  if (!pcmRingBuffer) return null;
+  var clipSamples = Math.min(sampleRate * PCM_CLIP_SECONDS, pcmBufferSamples);
+  var clip = new Float32Array(clipSamples);
+  var readPos = (pcmWritePos - clipSamples + pcmBufferSamples) % pcmBufferSamples;
+  for (var i = 0; i < clipSamples; i++) {
+    clip[i] = pcmRingBuffer[(readPos + i) % pcmBufferSamples];
+  }
+  return clip;
+}
+
+function captureSpeakerClip(speakerId, sampleRate) {
+  var clip = slicePcmClip(sampleRate);
+  if (!clip) return;
+  if (!speakerAudioClips[speakerId]) speakerAudioClips[speakerId] = [];
+  var arr = speakerAudioClips[speakerId];
+  if (arr.length >= PCM_MAX_CLIPS_PER_SPEAKER) arr.shift();
+  arr.push({ pcm: clip, timestamp: Date.now(), sampleRate: sampleRate });
+}
+
+function buildWav(pcm, sampleRate) {
+  var numSamples = pcm.length;
+  var buffer = new ArrayBuffer(44 + numSamples * 2);
+  var view = new DataView(buffer);
+  function writeStr(o, s) { for (var i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); }
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + numSamples * 2, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, numSamples * 2, true);
+  for (var i = 0; i < numSamples; i++) {
+    var s = Math.max(-1, Math.min(1, pcm[i]));
+    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return new Uint8Array(buffer);
+}
+
+function buildSpeakerCombinedWav(speakerId) {
+  var clips = speakerAudioClips[speakerId];
+  if (!clips || clips.length === 0) return null;
+  var sr = clips[0].sampleRate;
+  var totalSamples = 0;
+  for (var i = 0; i < clips.length; i++) totalSamples += clips[i].pcm.length;
+  var combined = new Float32Array(totalSamples);
+  var offset = 0;
+  for (var i = 0; i < clips.length; i++) {
+    combined.set(clips[i].pcm, offset);
+    offset += clips[i].pcm.length;
+  }
+  return { wav: buildWav(combined, sr), clips: clips.length, seconds: (totalSamples / sr).toFixed(1) };
+}
+
+// ============================================================
 // MAIN SCAN LOOP (runs every ~100ms)
 // ============================================================
 
@@ -2128,6 +2232,9 @@ function scanLoop() {
   const freqData = new Uint8Array(bufLen);
   analyser.getFloatTimeDomainData(timeData);
   analyser.getByteFrequencyData(freqData);
+
+  // Feed PCM ring buffer for per-speaker audio capture
+  feedPcmRing(timeData);
 
   // SNR & Voice detection
   const snrResult = estimateSNR(timeData);
@@ -2199,6 +2306,9 @@ function scanLoop() {
       $('mSpkrs').textContent = scanStats.uniqueSpeakers.size;
       $('mSpkrFill').style.width = Math.min(100, scanStats.uniqueSpeakers.size * 20) + '%';
       $('statSpeakers').textContent = scanStats.uniqueSpeakers.size;
+
+      // Capture per-speaker audio clip
+      captureSpeakerClip(speakerResult.id, ctx.sampleRate);
 
       // Update speaker in DB display
       updateSpeakerList(speakerResult);
