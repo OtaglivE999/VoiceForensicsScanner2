@@ -1543,13 +1543,26 @@ class VoiceFingerprint {
     raw.push(features.nasalance || 0);
     raw.push(features.zcr || 0);
     const srcDim = raw.length;
+    const nraw = new Float64Array(srcDim);
+    const scales = [
+      200, 50, 1, 500,
+      1,1,1,1,1,1,1,1,1,1,1,1,1,
+      500, 1000, 3000, 4000, 5, 3,
+      500, 1, 0.2
+    ];
+    for (let i = 0; i < srcDim; i++) nraw[i] = raw[i] / (scales[i] || 1);
     const emb = new Float32Array(256);
-    const PHI = 1.6180339887;
+    const PRIMES = [2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89];
     for (let d = 0; d < 256; d++) {
       let v = 0;
+      const p = PRIMES[d % PRIMES.length];
+      const phase = (d * 0.618033988749895) % (2 * Math.PI);
       for (let s = 0; s < srcDim; s++) {
-        const freq = (d + 1) * (s + 1) * PHI;
-        v += raw[s] * Math.cos(freq) + raw[s] * raw[s] * Math.sin(freq * 0.7);
+        const freq1 = p * (s + 1) * 0.37;
+        const freq2 = (d + 1) * (s + 1) * 0.73;
+        v += nraw[s] * Math.cos(freq1 + phase);
+        v += nraw[s] * nraw[s] * Math.sin(freq2 + phase * 0.5);
+        if (s + 1 < srcDim) v += nraw[s] * nraw[s+1] * Math.cos(freq1 * 0.5 + freq2);
       }
       emb[d] = v;
     }
