@@ -1072,7 +1072,7 @@ async function handleDownloadAll() {
     var spkId = speakerIds[si];
     var result = buildSpeakerCombinedWav(spkId);
     if (!result) continue;
-    var spkName = (fingerprinter && fingerprinter.speakers[spkId]) ? fingerprinter.speakers[spkId].name.replace(/[^a-zA-Z0-9_-]/g, '_') : spkId;
+    var spkName = (fingerprinter && fingerprinter.speakers[spkId] && fingerprinter.speakers[spkId].name) ? String(fingerprinter.speakers[spkId].name).replace(/[^a-zA-Z0-9_-]/g, '_') : spkId;
     var wavName = 'speakers/' + spkId + '_' + spkName + '.wav';
     var wavHash = await sha256HexBytes(result.wav);
     files.push({ name: wavName, data: result.wav });
@@ -1993,6 +1993,7 @@ async function startScanning() {
 
     initPcmRingBuffer(ctx.sampleRate);
     speakerAudioClips = {};
+    _speakerClipCooldowns = {};
 
     isScanning = true;
     scanStartTime = Date.now();
@@ -2146,9 +2147,15 @@ function initPcmRingBuffer(sampleRate) {
 
 function feedPcmRing(samples) {
   if (!pcmRingBuffer) return;
-  for (var i = 0; i < samples.length; i++) {
-    pcmRingBuffer[pcmWritePos] = samples[i];
-    pcmWritePos = (pcmWritePos + 1) % pcmBufferSamples;
+  var remaining = samples.length;
+  var srcOffset = 0;
+  while (remaining > 0) {
+    var space = pcmBufferSamples - pcmWritePos;
+    var chunk = Math.min(remaining, space);
+    pcmRingBuffer.set(samples.subarray(srcOffset, srcOffset + chunk), pcmWritePos);
+    pcmWritePos = (pcmWritePos + chunk) % pcmBufferSamples;
+    srcOffset += chunk;
+    remaining -= chunk;
   }
 }
 
@@ -2163,13 +2170,18 @@ function slicePcmClip(sampleRate) {
   return clip;
 }
 
+var _speakerClipCooldowns = {};
 function captureSpeakerClip(speakerId, sampleRate) {
+  var now = Date.now();
+  var cooldownMs = PCM_CLIP_SECONDS * 1000;
+  if (_speakerClipCooldowns[speakerId] && now - _speakerClipCooldowns[speakerId] < cooldownMs) return;
+  _speakerClipCooldowns[speakerId] = now;
   var clip = slicePcmClip(sampleRate);
   if (!clip) return;
   if (!speakerAudioClips[speakerId]) speakerAudioClips[speakerId] = [];
   var arr = speakerAudioClips[speakerId];
   if (arr.length >= PCM_MAX_CLIPS_PER_SPEAKER) arr.shift();
-  arr.push({ pcm: clip, timestamp: Date.now(), sampleRate: sampleRate });
+  arr.push({ pcm: clip, timestamp: now, sampleRate: sampleRate });
 }
 
 function buildWav(pcm, sampleRate) {
@@ -2209,7 +2221,7 @@ function buildSpeakerCombinedWav(speakerId) {
     combined.set(clips[i].pcm, offset);
     offset += clips[i].pcm.length;
   }
-  return { wav: buildWav(combined, sr), clips: clips.length, seconds: (totalSamples / sr).toFixed(1) };
+  return { wav: buildWav(combined, sr), clips: clips.length, seconds: Math.round(totalSamples / sr * 10) / 10 };
 }
 
 // ============================================================
