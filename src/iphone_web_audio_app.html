@@ -2033,7 +2033,10 @@ async function stopScanning() {
   isScanning = false;
   if (recognition) { try { recognition.abort(); } catch(e){} recognition = null; }
   var hadRecorder = mediaRecorder && mediaRecorder.state !== 'inactive';
-  var recorderDone = hadRecorder ? new Promise(function(resolve) { _onEvidenceFinalized = resolve; }) : Promise.resolve();
+  var recorderDone = hadRecorder ? Promise.race([
+    new Promise(function(resolve) { _onEvidenceFinalized = resolve; }),
+    new Promise(function(resolve) { setTimeout(resolve, 8000); }) // safety: never hang the stop flow
+  ]) : Promise.resolve();
   stopEvidenceRecorder();
   if (stream) stream.getTracks().forEach(t => t.stop());
   if (ctx) ctx.close();
@@ -2094,23 +2097,27 @@ function stopEvidenceRecorder() {
 }
 
 async function finalizeEvidenceClip() {
-  if (recordedChunks.length === 0) { dbg('No audio captured'); return; }
-  var mime = (mediaRecorder && mediaRecorder.mimeType) || recordedChunks[0].type || 'audio/webm';
-  var blob = new Blob(recordedChunks, { type: mime });
-  var hash = null;
-  try { var buf = await blob.arrayBuffer(); hash = await sha256HexBytes(new Uint8Array(buf)); }
-  catch (e) { dbg('Audio hash failed: ' + e.message); }
-  if (evidenceClip && evidenceClip.url) URL.revokeObjectURL(evidenceClip.url);
-  evidenceClip = {
-    blob: blob, url: URL.createObjectURL(blob), mime: mime, bytes: blob.size,
-    started: sessionStartFull ? sessionStartFull.toISOString() : null,
-    ended: new Date().toISOString(), sha256: hash
-  };
-  recordedChunks = [];
-  var kb = (blob.size / 1024).toFixed(0);
-  dbg('Evidence clip ready: ' + kb + 'KB ' + mime + ' (SHA-256 ' + (hash ? hash.slice(0, 12) + '…' : 'n/a') + ')');
-  updateEvidenceButton();
-  if (_onEvidenceFinalized) { var cb = _onEvidenceFinalized; _onEvidenceFinalized = null; cb(); }
+  try {
+    if (recordedChunks.length === 0) { dbg('No audio captured'); return; }
+    var mime = (mediaRecorder && mediaRecorder.mimeType) || recordedChunks[0].type || 'audio/webm';
+    var blob = new Blob(recordedChunks, { type: mime });
+    var hash = null;
+    try { var buf = await blob.arrayBuffer(); hash = await sha256HexBytes(new Uint8Array(buf)); }
+    catch (e) { dbg('Audio hash failed: ' + e.message); }
+    if (evidenceClip && evidenceClip.url) URL.revokeObjectURL(evidenceClip.url);
+    evidenceClip = {
+      blob: blob, url: URL.createObjectURL(blob), mime: mime, bytes: blob.size,
+      started: sessionStartFull ? sessionStartFull.toISOString() : null,
+      ended: new Date().toISOString(), sha256: hash
+    };
+    recordedChunks = [];
+    var kb = (blob.size / 1024).toFixed(0);
+    dbg('Evidence clip ready: ' + kb + 'KB ' + mime + ' (SHA-256 ' + (hash ? hash.slice(0, 12) + '…' : 'n/a') + ')');
+    updateEvidenceButton();
+  } finally {
+    // Always resolve the stop-scan wait, even if no audio was captured, so the ZIP still builds
+    if (_onEvidenceFinalized) { var cb = _onEvidenceFinalized; _onEvidenceFinalized = null; cb(); }
+  }
 }
 
 function updateEvidenceButton() {
