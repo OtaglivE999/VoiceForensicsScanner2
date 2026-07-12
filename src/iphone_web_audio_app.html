@@ -619,7 +619,7 @@ function updateStorageInfo() {
 
 async function buildLogCsv() {
   if (detectionLog.length === 0) return null;
-  var csv = 'Date,Time,Speaker_ID,Speaker_Name,Confidence,Verified,SNR_dB,Zone,Distance,Voice_Confidence,Pitch_F0_Hz,F1_Hz,F2_Hz,F3_Hz,F2_F1_Ratio,F3_F2_Ratio,Nasal_Formant_Hz,Nasalance_pct,Ambient_Class,Noise_Floor_dB,Ambient_Peak_Hz,Ambient_Hum_pct,Device_Latitude,Device_Longitude,GPS_Accuracy_m,Speech_Seconds,Voiced_Fraction,Clipping_Pct,Overlap_Detected,Reverb_Flag,Quality_Score,Embedding_Model,Transcript\n';
+  var csv = 'Date,Time,Speaker_ID,Speaker_Name,Confidence,Verified,SNR_dB,Zone,Distance,Voice_Confidence,Pitch_F0_Hz,F1_Hz,F2_Hz,F3_Hz,F2_F1_Ratio,F3_F2_Ratio,Nasal_Formant_Hz,Nasalance_pct,Jitter_pct,Shimmer_pct,Ambient_Class,Noise_Floor_dB,Ambient_Peak_Hz,Ambient_Hum_pct,Device_Latitude,Device_Longitude,GPS_Accuracy_m,Speech_Seconds,Voiced_Fraction,Clipping_Pct,Overlap_Detected,Reverb_Flag,Quality_Score,Embedding_Model,Transcript\n';
   for (var i = 0; i < detectionLog.length; i++) {
     var d = detectionLog[i];
     var dt = new Date(d.timestamp);
@@ -641,6 +641,8 @@ async function buildLogCsv() {
     var f3f2 = (d.f2 && d.f3) ? (d.f3 / d.f2).toFixed(2) : '';
     var nasalF = d.nasalFormant ? d.nasalFormant.toFixed(0) : '';
     var nasalance = d.nasalance ? (d.nasalance * 100).toFixed(1) : '';
+    var jitter = d.jitter ? (d.jitter * 100).toFixed(2) : '';
+    var shimmer = d.shimmer ? (d.shimmer * 100).toFixed(2) : '';
     var ambClass = (d.ambientLabel || '').replace(/"/g, '""');
     var ambFloor = d.ambientFloorDb ? d.ambientFloorDb.toFixed(0) : '';
     var ambPeak = d.ambientDominantHz ? d.ambientDominantHz.toFixed(0) : '';
@@ -656,7 +658,7 @@ async function buildLogCsv() {
     var qScore = d.quality_score ? d.quality_score.toFixed(3) : '';
     var embModel = d.embedding_model || '';
     var transcript = (d.transcript || '').replace(/"/g, '""');
-    csv += '"' + date + '","' + time + '","' + spkId + '","' + spkName + '","' + conf + '%","' + verified + '","' + snr + '","' + zone + '","' + dist + '","' + vconf + '%","' + pitch + '","' + f1 + '","' + f2 + '","' + f3 + '","' + f2f1 + '","' + f3f2 + '","' + nasalF + '","' + nasalance + '","' + ambClass + '","' + ambFloor + '","' + ambPeak + '","' + ambHum + '","' + lat + '","' + lng + '","' + gpsAcc + '","' + speechSec + '","' + voicedFrac + '","' + clipPct + '","' + overlap + '","' + reverb + '","' + qScore + '","' + embModel + '","' + transcript + '"\n';
+    csv += '"' + date + '","' + time + '","' + spkId + '","' + spkName + '","' + conf + '%","' + verified + '","' + snr + '","' + zone + '","' + dist + '","' + vconf + '%","' + pitch + '","' + f1 + '","' + f2 + '","' + f3 + '","' + f2f1 + '","' + f3f2 + '","' + nasalF + '","' + nasalance + '","' + jitter + '","' + shimmer + '","' + ambClass + '","' + ambFloor + '","' + ambPeak + '","' + ambHum + '","' + lat + '","' + lng + '","' + gpsAcc + '","' + speechSec + '","' + voicedFrac + '","' + clipPct + '","' + overlap + '","' + reverb + '","' + qScore + '","' + embModel + '","' + transcript + '"\n';
   }
   // Tamper-evident footer: SHA-256 of all data rows + chain-of-custody metadata
   var ci = currentCaseInfo();
@@ -1035,6 +1037,83 @@ function makeZip(files) {
 // chain-of-custody manifest into a single evidence .zip
 // ============================================================
 
+// Resolve the session-audio start time (ms) that timeline offsets are measured from
+function sessionStartMs() {
+  if (evidenceClip && evidenceClip.started) {
+    var t = Date.parse(evidenceClip.started);
+    if (!isNaN(t)) return t;
+  }
+  if (sessionStartFull) return sessionStartFull.getTime();
+  if (detectionLog.length > 0) return detectionLog[0].timestamp;
+  return Date.now();
+}
+
+function _vttTime(sec) {
+  if (sec < 0) sec = 0;
+  var h = Math.floor(sec / 3600);
+  var m = Math.floor((sec % 3600) / 60);
+  var s = Math.floor(sec % 60);
+  var ms = Math.round((sec - Math.floor(sec)) * 1000);
+  function p(n, w) { n = String(n); while (n.length < w) n = '0' + n; return n; }
+  return p(h,2) + ':' + p(m,2) + ':' + p(s,2) + '.' + p(ms,3);
+}
+
+// Time-aligned session timeline: each voiced detection mapped to an offset into
+// the session audio, with speaker, dialogue (transcript), jitter, shimmer, pitch, SNR.
+function buildSessionTimeline() {
+  var startMs = sessionStartMs();
+  var entries = [];
+  for (var i = 0; i < detectionLog.length; i++) {
+    var d = detectionLog[i];
+    var offset = Math.max(0, (d.timestamp - startMs) / 1000);
+    var dur = (d.speech_seconds && d.speech_seconds > 0) ? d.speech_seconds : 2.0;
+    entries.push({
+      t_start_sec: Math.round(offset * 1000) / 1000,
+      t_end_sec: Math.round((offset + dur) * 1000) / 1000,
+      wall_clock: new Date(d.timestamp).toISOString(),
+      speaker_id: d.speakerId || null,
+      speaker_name: d.speakerName || null,
+      dialogue: d.transcript || '',
+      jitter_pct: d.jitter ? Math.round(d.jitter * 10000) / 100 : 0,
+      shimmer_pct: d.shimmer ? Math.round(d.shimmer * 10000) / 100 : 0,
+      pitch_hz: d.pitch ? Math.round(d.pitch) : 0,
+      snr_db: d.snr ? Math.round(d.snr * 10) / 10 : 0,
+      confidence: d.confidence ? Math.round(d.confidence * 1000) / 1000 : 0
+    });
+  }
+  return JSON.stringify({
+    format: 'VoiceForensics-SessionTimeline-v1',
+    session_audio_start: new Date(startMs).toISOString(),
+    note: 't_start_sec / t_end_sec are offsets (seconds) into session_audio. Align this timeline while playing the session recording.',
+    entry_count: entries.length,
+    entries: entries
+  }, null, 2);
+}
+
+// WebVTT subtitle track aligned to session_audio: shows speaker + dialogue + jitter
+// per cue. Playable in any media player alongside the session recording.
+function buildSessionVtt() {
+  var startMs = sessionStartMs();
+  var vtt = 'WEBVTT\n\n';
+  vtt += 'NOTE Voice Forensics session transcript — aligned to session_audio start ' + new Date(startMs).toISOString() + '\n\n';
+  var cueNum = 0;
+  for (var i = 0; i < detectionLog.length; i++) {
+    var d = detectionLog[i];
+    var offset = Math.max(0, (d.timestamp - startMs) / 1000);
+    var dur = (d.speech_seconds && d.speech_seconds > 0) ? d.speech_seconds : 2.0;
+    var spk = d.speakerName || d.speakerId || 'Unknown';
+    var line = (d.transcript && d.transcript.trim()) ? d.transcript.trim() : '(voice detected)';
+    var jit = d.jitter ? (d.jitter * 100).toFixed(1) + '%' : '—';
+    var pitch = d.pitch ? Math.round(d.pitch) + 'Hz' : '—';
+    cueNum++;
+    vtt += cueNum + '\n';
+    vtt += _vttTime(offset) + ' --> ' + _vttTime(offset + dur) + '\n';
+    vtt += '<v ' + spk + '>' + line.replace(/</g, '‹').replace(/>/g, '›') + ' [jitter ' + jit + ' · pitch ' + pitch + ']\n\n';
+  }
+  if (cueNum === 0) vtt += 'NOTE No voiced detections in this session.\n';
+  return vtt;
+}
+
 async function handleDownloadAll() {
   var hasLog = detectionLog.length > 0;
   var hasSpk = fingerprinter && Object.keys(fingerprinter.speakers).length > 0;
@@ -1079,7 +1158,20 @@ async function handleDownloadAll() {
     manifestItems.push({ file: wavName, bytes: result.wav.length, sha256: wavHash, speaker: spkId, clips: result.clips, duration_seconds: result.seconds });
   }
 
-  // 5) Chain-of-custody manifest
+  // 5) Time-aligned session timeline + WebVTT subtitles (dialogue/jitter/speaker synced to session audio)
+  if (hasLog) {
+    var timelineStr = buildSessionTimeline();
+    var timelineBytes = _strBytes(timelineStr);
+    files.push({ name: 'session_timeline.json', data: timelineBytes });
+    manifestItems.push({ file: 'session_timeline.json', bytes: timelineBytes.length, sha256: await sha256HexBytes(timelineBytes), entries: detectionLog.length });
+
+    var vttStr = buildSessionVtt();
+    var vttBytes = _strBytes(vttStr);
+    files.push({ name: 'session_transcript.vtt', data: vttBytes });
+    manifestItems.push({ file: 'session_transcript.vtt', bytes: vttBytes.length, sha256: await sha256HexBytes(vttBytes) });
+  }
+
+  // 6) Chain-of-custody manifest
   var manifest = {
     format: 'VoiceForensics-EvidenceBundle-v2',
     generated: new Date().toISOString(),
@@ -1097,7 +1189,7 @@ async function handleDownloadAll() {
   var manifestFinal = JSON.stringify(Object.assign({}, manifest, { manifestSha256: manifestHash }), null, 2);
   files.push({ name: 'manifest.json', data: _strBytes(manifestFinal) });
 
-  // 5) Human-readable README
+  // 7) Human-readable README
   var readme = 'VOICE FORENSICS EVIDENCE BUNDLE\n' +
     '================================\n\n' +
     'Generated: ' + manifest.generated + '\n' +
@@ -1116,6 +1208,14 @@ async function handleDownloadAll() {
     '  Embedding dim: ' + PROCESSING_META.embedding_dim + ' (L2 normalized)\n' +
     '  VAD: ' + PROCESSING_META.vad_model + ' | Diarization: ' + PROCESSING_META.diarization_model + '\n' +
     '  LPC order: ' + PROCESSING_META.lpc_order + ' | Pre-emphasis: ' + PROCESSING_META.pre_emphasis + '\n\n' +
+    'SESSION TIMELINE & TRANSCRIPT:\n' +
+    '  session_audio.*        — full continuous session recording\n' +
+    '  session_timeline.json  — dialogue, jitter, shimmer, pitch & speaker per moment,\n' +
+    '                           as offsets (seconds) into the session recording\n' +
+    '  session_transcript.vtt — WebVTT subtitles (speaker + dialogue + jitter). Load\n' +
+    '                           alongside session_audio in any media player to see who\n' +
+    '                           spoke, what they said, and voice quality in sync.\n' +
+    '  speakers/*.wav         — per-speaker isolated audio clips\n\n' +
     'THRESHOLDS:\n' +
     '  Feature similarity: strong ≥' + MATCH_THRESHOLDS.feature_similarity.same_speaker_strong +
     ' | candidate ≥' + MATCH_THRESHOLDS.feature_similarity.same_speaker_candidate +
@@ -1287,6 +1387,11 @@ class VoiceFingerprint {
     // Pitch estimate (autocorrelation on time domain)
     features.pitch = this.estimatePitch(timeData, sampleRate);
 
+    // Voice-quality perturbation: jitter (period) + shimmer (amplitude)
+    const perturbation = this.estimatePerturbation(timeData, sampleRate, features.pitch);
+    features.jitter = perturbation.jitter;   // fraction (0..1), local period perturbation
+    features.shimmer = perturbation.shimmer; // fraction (0..1), local amplitude perturbation
+
     // Formants (F1, F2, F3) via LPC spectral envelope + nasal formant/nasalance
     const formantData = this.extractFormants(timeData, sampleRate);
     features.f1 = formantData.f1;
@@ -1429,6 +1534,65 @@ class VoiceFingerprint {
       if (corr > bestCorr) { bestCorr = corr; bestLag = lag; }
     }
     return bestLag > 0 ? sampleRate / bestLag : 0;
+  }
+
+  // Jitter (period perturbation) and shimmer (amplitude perturbation).
+  // Detects successive glottal cycles by peak-picking around the pitch period,
+  // then measures cycle-to-cycle variation. Returns fractions (0..1).
+  estimatePerturbation(timeData, sampleRate, pitchHz) {
+    if (!pitchHz || pitchHz < 60 || pitchHz > 500) return { jitter: 0, shimmer: 0 };
+    const period = Math.round(sampleRate / pitchHz);
+    if (period < 2) return { jitter: 0, shimmer: 0 };
+    const n = timeData.length;
+    // Anchor on the global maximum, then track successive glottal pulses by
+    // searching a narrow window (±30% of a period) around each expected next
+    // location. This keeps the detector on the fundamental period rather than
+    // jumping onto harmonic sub-peaks.
+    let anchor = 0, anchorV = -Infinity;
+    for (let i = 0; i < n; i++) { if (timeData[i] > anchorV) { anchorV = timeData[i]; anchor = i; } }
+    const tol = Math.max(1, Math.round(period * 0.3));
+    const peaks = [{ idx: anchor, amp: Math.abs(anchorV) }];
+    // Walk forward
+    let expected = anchor + period;
+    while (expected - tol < n) {
+      const lo = Math.max(0, expected - tol);
+      const hi = Math.min(n, expected + tol + 1);
+      if (lo >= hi) break;
+      let bestI = lo, bestV = -Infinity;
+      for (let i = lo; i < hi; i++) { if (timeData[i] > bestV) { bestV = timeData[i]; bestI = i; } }
+      peaks.push({ idx: bestI, amp: Math.abs(bestV) });
+      expected = bestI + period;
+    }
+    // Walk backward from the anchor
+    expected = anchor - period;
+    while (expected + tol >= 0) {
+      const lo = Math.max(0, expected - tol);
+      const hi = Math.min(n, expected + tol + 1);
+      if (lo >= hi) break;
+      let bestI = lo, bestV = -Infinity;
+      for (let i = lo; i < hi; i++) { if (timeData[i] > bestV) { bestV = timeData[i]; bestI = i; } }
+      peaks.unshift({ idx: bestI, amp: Math.abs(bestV) });
+      expected = bestI - period;
+    }
+    if (peaks.length < 3) return { jitter: 0, shimmer: 0 };
+    // Period-to-period intervals and peak amplitudes
+    const periods = [];
+    for (let i = 1; i < peaks.length; i++) periods.push(peaks[i].idx - peaks[i-1].idx);
+    // Jitter (local): mean |Pi - Pi-1| / mean P
+    let sumP = 0; for (let i = 0; i < periods.length; i++) sumP += periods[i];
+    const meanP = sumP / periods.length;
+    if (meanP <= 0) return { jitter: 0, shimmer: 0 };
+    let sumDP = 0; for (let i = 1; i < periods.length; i++) sumDP += Math.abs(periods[i] - periods[i-1]);
+    const jitter = periods.length > 1 ? (sumDP / (periods.length - 1)) / meanP : 0;
+    // Shimmer (local): mean |Ai - Ai-1| / mean A
+    let sumA = 0; for (let i = 0; i < peaks.length; i++) sumA += peaks[i].amp;
+    const meanA = sumA / peaks.length;
+    let sumDA = 0; for (let i = 1; i < peaks.length; i++) sumDA += Math.abs(peaks[i].amp - peaks[i-1].amp);
+    const shimmer = (peaks.length > 1 && meanA > 1e-9) ? (sumDA / (peaks.length - 1)) / meanA : 0;
+    return {
+      jitter: Math.max(0, Math.min(1, jitter)),
+      shimmer: Math.max(0, Math.min(1, shimmer))
+    };
   }
 
   match(features) {
@@ -2356,6 +2520,8 @@ function scanLoop() {
       f3: prof ? prof.f3 : 0,
       nasalFormant: prof ? prof.nasalFormant : 0,
       nasalance: prof ? prof.nasalance : 0,
+      jitter: detectionFeatures ? (detectionFeatures.jitter || 0) : 0,
+      shimmer: detectionFeatures ? (detectionFeatures.shimmer || 0) : 0,
       ambient: ambient,
       location: currentLocation ? { lat: currentLocation.lat, lng: currentLocation.lng, accuracy: currentLocation.accuracy } : null,
       quality: qc,
@@ -2388,6 +2554,8 @@ function addDetectionEntry(det) {
     f3: det.f3 || 0,
     nasalFormant: det.nasalFormant || 0,
     nasalance: det.nasalance || 0,
+    jitter: det.jitter || 0,
+    shimmer: det.shimmer || 0,
     ambientLabel: det.ambient ? det.ambient.label : '',
     ambientFloorDb: det.ambient ? det.ambient.floorDb : 0,
     ambientDominantHz: det.ambient ? det.ambient.dominantHz : 0,
