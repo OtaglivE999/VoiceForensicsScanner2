@@ -1,0 +1,69 @@
+{
+  "format": "VoiceForensics-EvidenceBundle-v2",
+  "generated": "2025-07-13T10:00:00.000Z",
+  "deviceId": "DEV-TESTDEV1-ABCDEF",
+  "case": {
+    "caseId": "CASE-2025-001",
+    "operator": "Test Operator",
+    "notes": "Synthetic fixture for baseline tests"
+  },
+  "processing": {
+    "vad_model": "energy-threshold-v1",
+    "diarization_model": "vfs-spectral-compare-v1",
+    "embedding_model": "vfs-spectral-projection-v1",
+    "embedding_model_version": "1.0.0",
+    "embedding_dim": 256,
+    "sample_rate": 16000,
+    "window_sec": 2.0,
+    "hop_sec": 0.15,
+    "normalization": "L2",
+    "lpc_order": 20,
+    "pre_emphasis": 0.63
+  },
+  "match_thresholds": {
+    "embedding_cosine": {
+      "same_speaker_strong": 0.85,
+      "same_speaker_candidate": 0.75,
+      "inconclusive_low": 0.65,
+      "no_match_below": 0.65
+    },
+    "feature_similarity": {
+      "same_speaker_strong": 0.85,
+      "same_speaker_candidate": 0.70,
+      "inconclusive_low": 0.55,
+      "no_match_below": 0.55
+    },
+    "cross_model_comparison": false
+  },
+  "app": {
+    "title": "iPhone Voice Fingerprint Scanner",
+    "url": "https://example.com/src/iphone_web_audio_app.html"
+  },
+  "sessions": ["2025-07-13T09:30:00.000Z"],
+  "contents": [
+    {
+      "file": "detection_log.csv",
+      "bytes": 1234,
+      "sha256": "abc123placeholder",
+      "records": 3
+    },
+    {
+      "file": "speaker_library.json",
+      "bytes": 5678,
+      "sha256": "def456placeholder",
+      "speakers": 2
+    },
+    {
+      "file": "session_timeline.json",
+      "bytes": 890,
+      "sha256": "ghi789placeholder",
+      "entries": 3
+    },
+    {
+      "file": "session_transcript.vtt",
+      "bytes": 456,
+      "sha256": "jkl012placeholder"
+    }
+  ],
+  "manifestSha256": "placeholder_self_hash"
+}

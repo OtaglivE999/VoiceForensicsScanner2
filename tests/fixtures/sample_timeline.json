@@ -1,0 +1,47 @@
+{
+  "format": "VoiceForensics-SessionTimeline-v1",
+  "session_audio_start": "2025-07-13T09:30:00.000Z",
+  "note": "t_start_sec / t_end_sec are offsets (seconds) into session_audio. Align this timeline while playing the session recording.",
+  "entry_count": 3,
+  "entries": [
+    {
+      "t_start_sec": 0,
+      "t_end_sec": 1.5,
+      "wall_clock": "2025-07-13T09:30:00.000Z",
+      "speaker_id": "SPK_001",
+      "speaker_name": "Speaker 1",
+      "dialogue": "Hello, testing one two three.",
+      "jitter_pct": 1.2,
+      "shimmer_pct": 3.4,
+      "pitch_hz": 142,
+      "snr_db": 18.5,
+      "confidence": 0.82
+    },
+    {
+      "t_start_sec": 2.0,
+      "t_end_sec": 4.1,
+      "wall_clock": "2025-07-13T09:30:02.000Z",
+      "speaker_id": "SPK_001",
+      "speaker_name": "Speaker 1",
+      "dialogue": "Can you hear me clearly now?",
+      "jitter_pct": 0.9,
+      "shimmer_pct": 2.8,
+      "pitch_hz": 139,
+      "snr_db": 22.1,
+      "confidence": 0.88
+    },
+    {
+      "t_start_sec": 5.0,
+      "t_end_sec": 5.8,
+      "wall_clock": "2025-07-13T09:30:05.000Z",
+      "speaker_id": "SPK_002",
+      "speaker_name": "Speaker 2",
+      "dialogue": "",
+      "jitter_pct": 1.8,
+      "shimmer_pct": 4.5,
+      "pitch_hz": 210,
+      "snr_db": 12.3,
+      "confidence": 0.71
+    }
+  ]
+}
