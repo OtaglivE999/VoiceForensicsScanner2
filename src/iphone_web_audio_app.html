@@ -1310,10 +1310,12 @@ const PROCESSING_META = {
   embedding_model_version: '1.0.0',
   embedding_dim: 256,
   embedding_l2_normalized: true,
-  sample_rate: 16000,
+  model_sample_rate: 16000,
+  capture_sample_rate: null, // set at runtime to ctx.sampleRate
   normalization: 'l2',
   noise_reduction: 'conservative',
-  window_sec: 2.0,
+  analysis_window_samples: 2048,
+  analysis_window_sec: null, // set at runtime: 2048 / ctx.sampleRate
   hop_sec: 0.15,
   min_speech_sec: 0.3,
   lpc_order: 20,
@@ -2154,6 +2156,9 @@ async function startScanning() {
       dbg('AudioWorklet failed: ' + e.message + ' - using direct connection');
       source.connect(analyser);
     }
+
+    PROCESSING_META.capture_sample_rate = ctx.sampleRate;
+    PROCESSING_META.analysis_window_sec = analyser.frequencyBinCount / ctx.sampleRate;
 
     initPcmRingBuffer(ctx.sampleRate);
     speakerAudioClips = {};
