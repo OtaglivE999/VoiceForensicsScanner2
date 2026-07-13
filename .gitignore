@@ -57,6 +57,7 @@ voice_library/*.npy
 .pytest_cache/
 .coverage
 htmlcov/
+test-results/
 
 # OS files
 .DS_Store
