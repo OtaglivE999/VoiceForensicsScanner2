@@ -1,0 +1,2964 @@
+<title>iPhone Voice Fingerprint Scanner</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="VoiceScanner">
+<style>
+:root {
+  --bg-deep: #060A12;
+  --bg-panel: #0C1220;
+  --bg-card: #111827;
+  --border: #1E293B;
+  --text-primary: #E2E8F0;
+  --text-secondary: #94A3B8;
+  --text-dim: #475569;
+  --accent-blue: #38BDF8;
+  --accent-cyan: #06B6D4;
+  --accent-amber: #F59E0B;
+  --accent-green: #10B981;
+  --accent-red: #EF4444;
+  --accent-purple: #A78BFA;
+  --meter-fill: #0EA5E9;
+  --meter-bg: #1E293B;
+  --zone-near: #10B981;
+  --zone-medium: #38BDF8;
+  --zone-far: #F59E0B;
+  --zone-ultra: #EF4444;
+  font-family: -apple-system, BlinkMacSystemFont, 'SF Pro Text', system-ui, sans-serif;
+  font-size: 16px;
+  color: var(--text-primary);
+  background: var(--bg-deep);
+}
+@media (prefers-color-scheme: light) {
+  :root {
+    --bg-deep: #F1F5F9;
+    --bg-panel: #FFFFFF;
+    --bg-card: #F8FAFC;
+    --border: #CBD5E1;
+    --text-primary: #0F172A;
+    --text-secondary: #475569;
+    --text-dim: #94A3B8;
+    --meter-bg: #E2E8F0;
+  }
+}
+:root[data-theme="light"] {
+  --bg-deep: #F1F5F9; --bg-panel: #FFFFFF; --bg-card: #F8FAFC;
+  --border: #CBD5E1; --text-primary: #0F172A; --text-secondary: #475569;
+  --text-dim: #94A3B8; --meter-bg: #E2E8F0;
+}
+:root[data-theme="dark"] {
+  --bg-deep: #060A12; --bg-panel: #0C1220; --bg-card: #111827;
+  --border: #1E293B; --text-primary: #E2E8F0; --text-secondary: #94A3B8;
+  --text-dim: #475569; --meter-bg: #1E293B;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  background: var(--bg-deep);
+  min-height: 100dvh;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  overflow-x: hidden;
+}
+button, input[type="range"] {
+  touch-action: manipulation;
+}
+
+.app {
+  display: flex;
+  flex-direction: column;
+  min-height: 100dvh;
+  max-width: 520px;
+  margin: 0 auto;
+  padding: 10px;
+  gap: 8px;
+}
+
+/* Header */
+.header {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 10px 12px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+}
+.header-left { display: flex; align-items: center; gap: 8px; }
+.status-dot {
+  width: 8px; height: 8px; border-radius: 50%;
+  background: var(--text-dim); transition: background 0.3s;
+}
+.status-dot.scanning { background: var(--accent-green); box-shadow: 0 0 8px var(--accent-green); animation: pulse 1.5s infinite; }
+@keyframes pulse { 50% { opacity: 0.5; } }
+.header-title { font-size: 13px; font-weight: 700; letter-spacing: 0.02em; }
+.header-meta {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 10px; color: var(--text-dim);
+}
+
+/* Tabs */
+.tabs {
+  display: flex; gap: 4px;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 10px;
+  padding: 4px;
+}
+.tab {
+  -webkit-appearance: none;
+  appearance: none;
+  flex: 1; padding: 9px 4px; border: none; border-radius: 7px;
+  background: transparent; color: var(--text-dim);
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase; cursor: pointer;
+  touch-action: manipulation;
+}
+.tab.active { background: var(--bg-card); color: var(--accent-blue); }
+
+/* Panels */
+.panel { display: none; flex-direction: column; gap: 8px; flex: 1; }
+.panel.active { display: flex; }
+
+/* Scanner Feed */
+.scanner-feed {
+  flex: 1; min-height: 280px; overflow-y: auto; overflow-x: hidden;
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 8px; -webkit-overflow-scrolling: touch;
+}
+.feed-empty {
+  display: flex; align-items: center; justify-content: center;
+  height: 100%; color: var(--text-dim); font-size: 13px; text-align: center;
+  padding: 20px;
+}
+.detection-entry {
+  padding: 8px 10px; border-radius: 8px;
+  background: var(--bg-card); border: 1px solid var(--border);
+  margin-bottom: 6px; font-size: 12px; animation: slideIn 0.2s ease;
+}
+@keyframes slideIn { from { opacity: 0; transform: translateY(-4px); } }
+.detection-header {
+  display: flex; align-items: center; gap: 6px; margin-bottom: 4px;
+}
+.detection-time {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 10px; color: var(--text-dim);
+}
+.detection-speaker {
+  font-weight: 700; font-size: 12px;
+}
+.detection-badge {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.06em;
+  padding: 2px 6px; border-radius: 4px; text-transform: uppercase;
+}
+.badge-verified { background: rgba(16,185,129,0.15); color: var(--accent-green); }
+.badge-partial { background: rgba(251,191,36,0.15); color: var(--accent-amber); }
+.badge-new { background: rgba(56,189,248,0.15); color: var(--accent-blue); }
+.zone-badge {
+  font-size: 9px; font-weight: 700; padding: 2px 5px; border-radius: 3px;
+  letter-spacing: 0.05em;
+}
+.zone-near { background: rgba(16,185,129,0.15); color: var(--zone-near); }
+.zone-medium { background: rgba(56,189,248,0.15); color: var(--zone-medium); }
+.zone-far { background: rgba(245,158,11,0.15); color: var(--zone-far); }
+.zone-ultra { background: rgba(239,68,68,0.15); color: var(--zone-ultra); }
+.detection-metrics {
+  display: flex; gap: 10px; font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 10px; color: var(--text-dim); margin-top: 3px;
+}
+.detection-transcript {
+  margin-top: 4px; font-size: 12px; color: var(--text-secondary);
+  font-style: italic; padding-left: 4px;
+  border-left: 2px solid var(--border);
+}
+.detection-biometrics {
+  display: flex; gap: 8px; flex-wrap: wrap;
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 9px; color: var(--accent-cyan); margin-top: 4px;
+}
+
+/* Viz panel */
+.viz-section {
+  background: var(--bg-panel); border: 1px solid var(--border); border-radius: 12px;
+  padding: 8px; display: flex; flex-direction: column; gap: 4px;
+}
+.viz-section canvas {
+  width: 100%; height: 70px; border-radius: 6px; background: var(--bg-deep);
+}
+.viz-label {
+  font-size: 9px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-dim);
+}
+
+/* Meters row */
+.meters { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.meter-card {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 8px 4px; text-align: center;
+}
+.meter-value {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 15px; font-weight: 700; color: var(--accent-cyan); line-height: 1.2;
+}
+.meter-label {
+  font-size: 8px; font-weight: 700; letter-spacing: 0.1em;
+  text-transform: uppercase; color: var(--text-dim); margin-top: 1px;
+}
+.meter-bar { margin-top: 4px; height: 3px; background: var(--meter-bg); border-radius: 2px; overflow: hidden; }
+.meter-bar-fill { height: 100%; border-radius: 2px; background: var(--meter-fill); transition: width 0.1s; width: 0%; }
+
+/* Stats */
+.stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
+.stat-card {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px;
+}
+.stat-value {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 20px; font-weight: 700; color: var(--accent-blue);
+}
+.stat-label { font-size: 11px; color: var(--text-dim); margin-top: 2px; }
+
+/* Controls */
+.controls {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 12px; padding: 12px; display: flex; flex-direction: column; gap: 8px;
+}
+.control-row { display: flex; align-items: center; justify-content: space-between; }
+.control-label { font-size: 12px; font-weight: 500; color: var(--text-secondary); }
+.toggle {
+  -webkit-appearance: none;
+  appearance: none;
+  position: relative; width: 44px; height: 26px;
+  background: var(--meter-bg); border-radius: 13px;
+  cursor: pointer; border: none; outline: none;
+  touch-action: manipulation;
+  transition: background 0.2s;
+  font-size: 0; color: transparent; overflow: hidden;
+}
+.toggle.on { background: var(--accent-blue); }
+.toggle::after {
+  content: ''; position: absolute; top: 3px; left: 3px;
+  width: 20px; height: 20px; border-radius: 50%;
+  background: white; transition: transform 0.2s;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+}
+.toggle.on::after { transform: translateX(18px); }
+
+.section-title {
+  font-size: 10px; font-weight: 700; letter-spacing: 0.08em;
+  text-transform: uppercase; color: var(--text-dim);
+}
+
+/* Main button */
+.main-btn {
+  -webkit-appearance: none;
+  appearance: none;
+  width: 100%; padding: 16px; border: none; border-radius: 12px;
+  font-size: 16px; font-weight: 700; letter-spacing: 0.03em;
+  cursor: pointer;
+  touch-action: manipulation;
+  position: relative;
+  z-index: 10;
+}
+.btn-start { background: var(--accent-green); color: #fff; }
+.btn-stop { background: var(--accent-red); color: #fff; }
+
+/* Speakers panel */
+.speaker-list { display: flex; flex-direction: column; gap: 6px; }
+.speaker-card {
+  background: var(--bg-panel); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px 12px;
+  display: flex; align-items: center; gap: 10px;
+}
+.speaker-avatar {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 16px; font-weight: 700; color: white;
+}
+.speaker-info { flex: 1; }
+.speaker-name { font-size: 13px; font-weight: 700; }
+.speaker-detail { font-size: 11px; color: var(--text-dim); margin-top: 1px; }
+.speaker-conf {
+  font-family: 'SF Mono', ui-monospace, monospace;
+  font-size: 12px; font-weight: 700;
+}
+
+.mode-btn {
+  -webkit-appearance: none;
+  appearance: none;
+  padding: 8px 4px; border: 1px solid var(--border); border-radius: 8px;
+  background: var(--bg-card); color: var(--text-secondary);
+  font-size: 11px; font-weight: 600; text-align: center;
+  cursor: pointer; touch-action: manipulation;
+}
+.mode-btn.active {
+  border-color: var(--accent-blue);
+  background: rgba(56, 189, 248, 0.1);
+  color: var(--accent-blue);
+}
+.mode-selector { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+}
+</style>
+
+<div class="app">
+  <!-- Header -->
+  <div class="header">
+    <div class="header-left">
+      <div class="status-dot" id="statusDot"></div>
+      <span class="header-title" id="statusText">iPHONE VOICE FINGERPRINT SCANNER</span>
+    </div>
+    <div class="header-meta" id="headerMeta">IDLE</div>
+  </div>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab active" data-tab="scanner" onclick="handleTab(this)">Scanner</button>
+    <button class="tab" data-tab="viz" onclick="handleTab(this)">Waveform</button>
+    <button class="tab" data-tab="speakers" onclick="handleTab(this)">Speakers</button>
+    <button class="tab" data-tab="settings" onclick="handleTab(this)">Settings</button>
+  </div>
+
+  <!-- Scanner Panel -->
+  <div class="panel active" id="panel-scanner">
+    <div class="meters">
+      <div class="meter-card">
+        <div class="meter-value" id="mSnr">--</div>
+        <div class="meter-label">SNR dB</div>
+        <div class="meter-bar"><div class="meter-bar-fill" id="mSnrFill"></div></div>
+      </div>
+      <div class="meter-card">
+        <div class="meter-value" id="mZone">--</div>
+        <div class="meter-label">Zone</div>
+        <div class="meter-bar"><div class="meter-bar-fill" id="mZoneFill" style="background:var(--accent-green)"></div></div>
+      </div>
+      <div class="meter-card">
+        <div class="meter-value" id="mVoice">--</div>
+        <div class="meter-label">Voice %</div>
+        <div class="meter-bar"><div class="meter-bar-fill" id="mVoiceFill"></div></div>
+      </div>
+      <div class="meter-card">
+        <div class="meter-value" id="mSpkrs">0</div>
+        <div class="meter-label">Speakers</div>
+        <div class="meter-bar"><div class="meter-bar-fill" id="mSpkrFill" style="background:var(--accent-purple)"></div></div>
+      </div>
+    </div>
+    <div class="scanner-feed" id="scannerFeed">
+      <div class="feed-empty" id="feedEmpty">
+        Tap START SCANNING to begin real-time voice detection.<br><br>
+        Field Detection (SNR to Distance):<br>
+        NEAR: 35dB+ (0-1m)<br>
+        MEDIUM: 25-35dB (1-3m)<br>
+        FAR: 15-25dB (3-6m)<br>
+        ULTRA-FAR: &lt;15dB (6m+)
+      </div>
+    </div>
+    <div id="ambientPanel" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:8px 10px;font-family:'SF Mono',ui-monospace,monospace;font-size:10px;display:none"></div>
+    <div id="scannerGeo" style="font-family:'SF Mono',ui-monospace,monospace;font-size:10px;color:var(--text-dim);text-align:center;padding:4px;display:none"></div>
+  </div>
+
+  <!-- Visualization Panel -->
+  <div class="panel" id="panel-viz">
+    <div class="viz-section">
+      <span class="viz-label">Waveform</span>
+      <canvas id="waveCanvas"></canvas>
+    </div>
+    <div class="viz-section">
+      <span class="viz-label">Frequency Spectrum</span>
+      <canvas id="specCanvas"></canvas>
+    </div>
+    <div class="viz-section">
+      <span class="viz-label">Voice Energy (20-frame history)</span>
+      <canvas id="energyCanvas"></canvas>
+    </div>
+    <div class="meters">
+      <div class="meter-card">
+        <div class="meter-value" id="mRms">--</div>
+        <div class="meter-label">RMS dB</div>
+        <div class="meter-bar"><div class="meter-bar-fill" id="mRmsFill"></div></div>
+      </div>
+      <div class="meter-card">
+        <div class="meter-value" id="mPeak">--</div>
+        <div class="meter-label">Peak dB</div>
+        <div class="meter-bar"><div class="meter-bar-fill" id="mPeakFill"></div></div>
+      </div>
+      <div class="meter-card">
+        <div class="meter-value" id="mFreq">--</div>
+        <div class="meter-label">F0 Hz</div>
+        <div class="meter-bar"><div class="meter-bar-fill" id="mFreqFill"></div></div>
+      </div>
+      <div class="meter-card">
+        <div class="meter-value" id="mZcr">--</div>
+        <div class="meter-label">ZCR</div>
+        <div class="meter-bar"><div class="meter-bar-fill" id="mZcrFill"></div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Speakers Panel -->
+  <div class="panel" id="panel-speakers">
+    <div class="session-header" id="sessionHeader" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:8px;padding:8px 12px;font-family:'SF Mono',ui-monospace,monospace;font-size:11px;color:var(--accent-cyan);text-align:center;display:none">
+      <div style="font-weight:700;font-size:12px;color:var(--accent-blue)">SESSION ACTIVE</div>
+      <div id="sessionDateTime" style="margin-top:2px"></div>
+      <div id="geoInfo" style="margin-top:3px;font-size:10px;display:none"></div>
+    </div>
+    <div class="stats-grid">
+      <div class="stat-card">
+        <div class="stat-value" id="statTotal">0</div>
+        <div class="stat-label">Total Detections</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statSpeakers">0</div>
+        <div class="stat-label">Unique Speakers</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statVoice">0</div>
+        <div class="stat-label">Voice Segments</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value" id="statDuration">0s</div>
+        <div class="stat-label">Scan Duration</div>
+      </div>
+    </div>
+    <div class="section-title" style="margin-top:4px">Identified Speakers</div>
+    <div class="speaker-list" id="speakerList">
+      <div class="feed-empty">No speakers detected yet</div>
+    </div>
+    <div style="display:flex;gap:6px;margin-top:8px;flex-wrap:wrap">
+      <button class="main-btn" style="flex:1;font-size:11px;padding:10px 8px;min-width:0;background:var(--accent-blue);border:none;border-radius:8px;color:#fff;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="handleExportLog()">EXPORT LOG</button>
+      <button class="main-btn" style="flex:1;font-size:11px;padding:10px 8px;min-width:0;background:var(--accent-green);border:none;border-radius:8px;color:#fff;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="handleExportSpeakers()">EXPORT SPEAKERS</button>
+      <button class="main-btn" style="flex:1;font-size:11px;padding:10px 8px;min-width:0;background:var(--accent-red);border:none;border-radius:8px;color:#fff;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="handleClearData()">CLEAR ALL</button>
+    </div>
+    <button class="main-btn" id="downloadAudioBtn" style="display:none;width:100%;font-size:11px;padding:10px 8px;margin-top:6px;background:var(--accent-cyan);border:none;border-radius:8px;color:#000;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="handleDownloadAudio()">DOWNLOAD AUDIO</button>
+    <button class="main-btn" style="width:100%;font-size:12px;padding:12px 8px;margin-top:6px;background:linear-gradient(135deg,var(--accent-purple),var(--accent-blue));border:none;border-radius:8px;color:#fff;font-weight:700;letter-spacing:0.04em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="handleDownloadAll()">⬇ DOWNLOAD ALL (ZIP)</button>
+
+    <div class="section-title" style="margin-top:10px">Case / Operator</div>
+    <div style="display:flex;flex-direction:column;gap:5px">
+      <input type="text" id="caseId" placeholder="Case ID / reference" onchange="saveCaseInfo()" style="width:100%;padding:8px;background:var(--bg-card);border:1px solid var(--border);border-radius:7px;color:var(--text-primary);font-size:12px;-webkit-appearance:none">
+      <input type="text" id="caseOperator" placeholder="Operator name" onchange="saveCaseInfo()" style="width:100%;padding:8px;background:var(--bg-card);border:1px solid var(--border);border-radius:7px;color:var(--text-primary);font-size:12px;-webkit-appearance:none">
+      <input type="text" id="caseNotes" placeholder="Notes (location, subject, context)" onchange="saveCaseInfo()" style="width:100%;padding:8px;background:var(--bg-card);border:1px solid var(--border);border-radius:7px;color:var(--text-primary);font-size:12px;-webkit-appearance:none">
+    </div>
+
+    <div class="section-title" style="margin-top:10px">Forensic Verification</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">
+      <button class="main-btn" style="flex:1;font-size:11px;padding:10px 8px;min-width:0;background:var(--accent-purple);border:none;border-radius:8px;color:#fff;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="document.getElementById('importFile').click()">IMPORT LIBRARY</button>
+      <button class="main-btn" id="verifyBtn" style="flex:1;font-size:11px;padding:10px 8px;min-width:0;background:var(--accent-amber);border:none;border-radius:8px;color:#000;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="handleVerifyVoice()">VERIFY VOICE</button>
+      <button class="main-btn" style="flex:1;font-size:11px;padding:10px 8px;min-width:0;background:var(--accent-cyan);border:none;border-radius:8px;color:#000;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="document.getElementById('verifyFile').click()">VERIFY FILE</button>
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px">
+      <button class="main-btn" style="flex:1;font-size:11px;padding:10px 8px;min-width:0;background:var(--accent-green);border:none;border-radius:8px;color:#000;font-weight:700;letter-spacing:0.03em;cursor:pointer;touch-action:manipulation;-webkit-appearance:none" onclick="matchRosterAgainstLive()">MATCH ROSTER</button>
+    </div>
+    <input type="file" id="importFile" accept="application/json,.json" style="display:none" onchange="handleImportLibrary(this)">
+    <input type="file" id="verifyFile" accept="application/json,.json" style="display:none" onchange="handleVerifyFile(this)">
+    <div id="verifyResult" style="margin-top:8px;display:none"></div>
+    <div style="font-size:10px;color:var(--text-dim);text-align:center;margin-top:4px" id="storageInfo"></div>
+    <div style="font-size:9px;color:var(--text-dim);text-align:center;margin-top:2px;line-height:1.4">Screening-grade biometrics with 256-D embeddings &amp; quality metrics. Exports carry SHA-256 integrity hash + processing metadata. Not a substitute for court-validated ASV or expert examination.</div>
+  </div>
+
+  <!-- Settings Panel -->
+  <div class="panel" id="panel-settings">
+    <div class="controls">
+      <div class="section-title">Scan Mode</div>
+      <div class="mode-selector">
+        <button class="mode-btn active" data-mode="forensic" onclick="handleMode(this)">Forensic</button>
+        <button class="mode-btn" data-mode="voice" onclick="handleMode(this)">Voice ISO</button>
+        <button class="mode-btn" data-mode="wide" onclick="handleMode(this)">Wide Spec</button>
+      </div>
+      <div class="section-title" style="margin-top:8px">Enhancement</div>
+      <div class="control-row">
+        <span class="control-label">Noise Reduction</span>
+        <button class="toggle on" id="toggleNR" onclick="handleToggle(this)">.</button>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Freq Compensation</span>
+        <button class="toggle on" id="toggleFreq" onclick="handleToggle(this)">.</button>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Dynamic Range Ctrl</span>
+        <button class="toggle on" id="toggleDRC" onclick="handleToggle(this)">.</button>
+      </div>
+      <div class="control-row">
+        <span class="control-label">AGC Bypass (Raw)</span>
+        <button class="toggle" id="toggleAGC" onclick="handleToggle(this)">.</button>
+      </div>
+
+      <div class="section-title" style="margin-top:8px">Scanner</div>
+      <div class="control-row">
+        <span class="control-label">Voice Transcription</span>
+        <button class="toggle on" id="toggleTranscript" onclick="handleToggle(this)">.</button>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Speaker Fingerprint</span>
+        <button class="toggle on" id="toggleFingerprint" onclick="handleToggle(this)">.</button>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Auto-Enroll Speakers</span>
+        <button class="toggle on" id="toggleEnroll" onclick="handleToggle(this)">.</button>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Bilingual (EN/ES)</span>
+        <button class="toggle on" id="toggleLang" onclick="handleToggle(this)">.</button>
+      </div>
+      <div class="control-row">
+        <span class="control-label">Record Session Audio</span>
+        <button class="toggle on" id="toggleRecord" onclick="handleToggle(this)">.</button>
+      </div>
+
+      <div class="section-title" style="margin-top:8px">Input Gain</div>
+      <div class="control-row">
+        <input type="range" id="gainSlider" min="0" max="300" value="100" oninput="handleGain(this)" style="flex:1;height:4px;-webkit-appearance:none;background:var(--meter-bg);border-radius:2px;outline:none">
+        <span style="font-family:'SF Mono',monospace;font-size:11px;color:var(--text-dim);min-width:40px;text-align:right" id="gainValue">0 dB</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- Debug Log -->
+  <div id="debugLog" style="background:var(--bg-panel);border:1px solid var(--border);border-radius:10px;padding:10px;font-family:'SF Mono',ui-monospace,monospace;font-size:11px;color:var(--accent-amber);max-height:120px;overflow-y:auto;-webkit-overflow-scrolling:touch"></div>
+
+  <!-- Main Action Button -->
+  <button class="main-btn btn-start" id="mainBtn" onclick="handleMainBtn()">START SCANNING</button>
+</div>
+
+<script>
+// ============================================================
+// VOICE FORENSICS LIVE SCANNER
+// ============================================================
+
+// Debug logger - visible in UI
+function dbg(msg) {
+  var el = document.getElementById('debugLog');
+  if (!el) return;
+  var line = document.createElement('div');
+  var ts = new Date().toLocaleTimeString('en-US', {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+  line.textContent = '[' + ts + '] ' + msg;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+// Catch all unhandled errors
+window.onerror = function(msg, src, line, col, err) {
+  dbg('ERROR: ' + msg + ' (line ' + line + ')');
+  return false;
+};
+window.onunhandledrejection = function(e) {
+  dbg('PROMISE ERROR: ' + (e.reason ? e.reason.message || e.reason : 'unknown'));
+};
+
+var AudioCtx = window.AudioContext || window.webkitAudioContext;
+var ctx, stream, source, analyser, processorNode;
+var isScanning = false;
+var scanStartTime = 0;
+var animFrame = null;
+
+// Scanner state
+var scanStats = { totalDetections: 0, voiceSegments: 0, uniqueSpeakers: new Set() };
+var speakers = {};
+var detectionLog = [];
+var energyHistory = [];
+var sessionStartFull = null;
+
+// Per-speaker audio capture — PCM ring buffer + per-speaker clips
+var pcmRingBuffer = null;
+var pcmWritePos = 0;
+var pcmBufferSamples = 0;
+var speakerAudioClips = {}; // { speakerId: [{ pcm: Float32Array, timestamp: number }] }
+var PCM_CLIP_SECONDS = 2;
+var PCM_MAX_CLIPS_PER_SPEAKER = 30;
+var lastAmbient = null;
+
+// ============================================================
+// PERSISTENT STORAGE (localStorage)
+// ============================================================
+
+var STORAGE_KEYS = { log: 'vfs_detection_log', speakers: 'vfs_speaker_library', sessions: 'vfs_sessions' };
+
+function saveDetectionLog() {
+  try {
+    var trimmed = detectionLog.slice(-500);
+    localStorage.setItem(STORAGE_KEYS.log, JSON.stringify(trimmed));
+  } catch(e) { dbg('Storage full, trimming log'); detectionLog = detectionLog.slice(-250); try { localStorage.setItem(STORAGE_KEYS.log, JSON.stringify(detectionLog)); } catch(e2){} }
+}
+
+function loadDetectionLog() {
+  try {
+    var data = localStorage.getItem(STORAGE_KEYS.log);
+    if (data) { detectionLog = JSON.parse(data); dbg('Loaded ' + detectionLog.length + ' log entries from storage'); }
+  } catch(e) { detectionLog = []; }
+}
+
+function saveSpeakerLibrary(fp) {
+  try {
+    var data = { speakers: fp.speakers, nextId: fp.nextId };
+    localStorage.setItem(STORAGE_KEYS.speakers, JSON.stringify(data));
+  } catch(e) { dbg('Failed to save speaker library'); }
+}
+
+function loadSpeakerLibrary(fp) {
+  try {
+    var data = localStorage.getItem(STORAGE_KEYS.speakers);
+    if (data) {
+      var parsed = JSON.parse(data);
+      fp.speakers = parsed.speakers || {};
+      fp.nextId = parsed.nextId || 1;
+      dbg('Loaded ' + Object.keys(fp.speakers).length + ' speakers from library');
+    }
+  } catch(e) { dbg('Failed to load speaker library'); }
+}
+
+function saveSessionStart(ts) {
+  try {
+    var sessions = JSON.parse(localStorage.getItem(STORAGE_KEYS.sessions) || '[]');
+    sessions.push(ts);
+    if (sessions.length > 100) sessions = sessions.slice(-100);
+    localStorage.setItem(STORAGE_KEYS.sessions, JSON.stringify(sessions));
+  } catch(e) {}
+}
+
+function updateStorageInfo() {
+  var logCount = detectionLog.length;
+  var spkCount = fingerprinter ? Object.keys(fingerprinter.speakers).length : 0;
+  var el = $('storageInfo');
+  if (el) el.textContent = logCount + ' log entries | ' + spkCount + ' speakers in library';
+}
+
+async function buildLogCsv() {
+  if (detectionLog.length === 0) return null;
+  var csv = 'Date,Time,Speaker_ID,Speaker_Name,Confidence,Verified,SNR_dB,Zone,Distance,Voice_Confidence,Pitch_F0_Hz,F1_Hz,F2_Hz,F3_Hz,F2_F1_Ratio,F3_F2_Ratio,Nasal_Formant_Hz,Nasalance_pct,Jitter_pct,Shimmer_pct,Ambient_Class,Noise_Floor_dB,Ambient_Peak_Hz,Ambient_Hum_pct,Device_Latitude,Device_Longitude,GPS_Accuracy_m,Speech_Seconds,Voiced_Fraction,Clipping_Pct,Overlap_Detected,Reverb_Flag,Quality_Score,Embedding_Model,Transcript\n';
+  for (var i = 0; i < detectionLog.length; i++) {
+    var d = detectionLog[i];
+    var dt = new Date(d.timestamp);
+    var date = dt.toLocaleDateString('en-US');
+    var time = dt.toLocaleTimeString('en-US', {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    var spkId = d.speakerId || 'Unknown';
+    var spkName = d.speakerName || 'Unknown';
+    var conf = d.confidence ? (d.confidence * 100).toFixed(1) : '0';
+    var verified = d.verified ? 'YES' : 'NO';
+    var snr = d.snr ? d.snr.toFixed(1) : '0';
+    var zone = d.zone || '';
+    var dist = d.distance || '';
+    var vconf = d.voiceConf ? (d.voiceConf * 100).toFixed(1) : '0';
+    var pitch = d.pitch ? d.pitch.toFixed(0) : '0';
+    var f1 = d.f1 ? d.f1.toFixed(0) : '';
+    var f2 = d.f2 ? d.f2.toFixed(0) : '';
+    var f3 = d.f3 ? d.f3.toFixed(0) : '';
+    var f2f1 = (d.f1 && d.f2) ? (d.f2 / d.f1).toFixed(2) : '';
+    var f3f2 = (d.f2 && d.f3) ? (d.f3 / d.f2).toFixed(2) : '';
+    var nasalF = d.nasalFormant ? d.nasalFormant.toFixed(0) : '';
+    var nasalance = d.nasalance ? (d.nasalance * 100).toFixed(1) : '';
+    var jitter = d.jitter ? (d.jitter * 100).toFixed(2) : '';
+    var shimmer = d.shimmer ? (d.shimmer * 100).toFixed(2) : '';
+    var ambClass = (d.ambientLabel || '').replace(/"/g, '""');
+    var ambFloor = d.ambientFloorDb ? d.ambientFloorDb.toFixed(0) : '';
+    var ambPeak = d.ambientDominantHz ? d.ambientDominantHz.toFixed(0) : '';
+    var ambHum = d.ambientHum ? (d.ambientHum * 100).toFixed(0) : '';
+    var lat = d.location ? d.location.lat.toFixed(6) : '';
+    var lng = d.location ? d.location.lng.toFixed(6) : '';
+    var gpsAcc = d.location ? d.location.accuracy.toFixed(0) : '';
+    var speechSec = d.speech_seconds ? d.speech_seconds.toFixed(3) : '';
+    var voicedFrac = d.voiced_fraction ? d.voiced_fraction.toFixed(3) : '';
+    var clipPct = d.clipping_pct !== undefined ? d.clipping_pct.toFixed(5) : '';
+    var overlap = d.overlap_detected ? 'YES' : 'NO';
+    var reverb = d.reverb_flag ? 'YES' : 'NO';
+    var qScore = d.quality_score ? d.quality_score.toFixed(3) : '';
+    var embModel = d.embedding_model || '';
+    var transcript = (d.transcript || '').replace(/"/g, '""');
+    csv += '"' + date + '","' + time + '","' + spkId + '","' + spkName + '","' + conf + '%","' + verified + '","' + snr + '","' + zone + '","' + dist + '","' + vconf + '%","' + pitch + '","' + f1 + '","' + f2 + '","' + f3 + '","' + f2f1 + '","' + f3f2 + '","' + nasalF + '","' + nasalance + '","' + jitter + '","' + shimmer + '","' + ambClass + '","' + ambFloor + '","' + ambPeak + '","' + ambHum + '","' + lat + '","' + lng + '","' + gpsAcc + '","' + speechSec + '","' + voicedFrac + '","' + clipPct + '","' + overlap + '","' + reverb + '","' + qScore + '","' + embModel + '","' + transcript + '"\n';
+  }
+  // Tamper-evident footer: SHA-256 of all data rows + chain-of-custody metadata
+  var ci = currentCaseInfo();
+  var hash = await sha256Hex(csv);
+  csv += '\n"# INTEGRITY","SHA-256","' + (hash || 'unavailable') + '"\n';
+  csv += '"# DEVICE","' + getDeviceId() + '","EXPORTED","' + new Date().toISOString() + '","ENTRIES","' + detectionLog.length + '"\n';
+  csv += '"# CASE","' + (ci.caseId || '').replace(/"/g,'""') + '","OPERATOR","' + (ci.operator || '').replace(/"/g,'""') + '","NOTES","' + (ci.notes || '').replace(/"/g,'""') + '"\n';
+  if (evidenceClip) csv += '"# AUDIO_EVIDENCE_SHA256","' + (evidenceClip.sha256 || 'n/a') + '","BYTES","' + evidenceClip.bytes + '","MIME","' + evidenceClip.mime + '"\n';
+  csv += '"# PROCESSING","EMBEDDING_MODEL","' + PROCESSING_META.embedding_model + '","VERSION","' + PROCESSING_META.embedding_model_version + '","DIM","' + PROCESSING_META.embedding_dim + '","NORM","' + PROCESSING_META.normalization + '"\n';
+  csv += '"# PROCESSING","VAD","' + PROCESSING_META.vad_model + '","DIARIZATION","' + PROCESSING_META.diarization_model + '","LPC_ORDER","' + PROCESSING_META.lpc_order + '","PRE_EMPHASIS","' + PROCESSING_META.pre_emphasis + '"\n';
+  csv += '"# THRESHOLDS","FEATURE_STRONG","' + MATCH_THRESHOLDS.feature_similarity.same_speaker_strong + '","FEATURE_CANDIDATE","' + MATCH_THRESHOLDS.feature_similarity.same_speaker_candidate + '","EMBEDDING_STRONG","' + MATCH_THRESHOLDS.embedding_cosine.same_speaker_strong + '","EMBEDDING_CANDIDATE","' + MATCH_THRESHOLDS.embedding_cosine.same_speaker_candidate + '"\n';
+  return csv;
+}
+
+async function handleExportLog() {
+  if (detectionLog.length === 0) { dbg('No log entries to export'); return; }
+  var csv = await buildLogCsv();
+  downloadFile('voice_forensics_log_' + formatFileDate() + '.csv', csv, 'text/csv');
+  dbg('Exported ' + detectionLog.length + ' log entries as CSV');
+}
+
+// Persistent per-device identifier (for chain-of-custody metadata)
+function getDeviceId() {
+  var id = localStorage.getItem('vfs_device_id');
+  if (!id) {
+    id = 'DEV-' + Math.random().toString(36).slice(2, 10).toUpperCase() + '-' + Date.now().toString(36).toUpperCase();
+    localStorage.setItem('vfs_device_id', id);
+  }
+  return id;
+}
+
+// SHA-256 hex digest via Web Crypto (requires https / secure context)
+async function sha256Hex(str) {
+  if (!(window.crypto && crypto.subtle)) return null;
+  return sha256HexBytes(new TextEncoder().encode(str));
+}
+// Byte-level SHA-256 — produces the true file hash (matches `shasum -a 256`)
+async function sha256HexBytes(bytes) {
+  if (!(window.crypto && crypto.subtle)) return null;
+  const buf = await crypto.subtle.digest('SHA-256', bytes);
+  return Array.from(new Uint8Array(buf)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function buildSpeakerJson() {
+  if (!fingerprinter || Object.keys(fingerprinter.speakers).length === 0) return null;
+  var payload = {
+    format: 'VoiceForensics-SpeakerLibrary-v2',
+    exported: new Date().toISOString(),
+    deviceId: getDeviceId(),
+    case: currentCaseInfo(),
+    processing: Object.assign({}, PROCESSING_META),
+    match_thresholds: Object.assign({}, MATCH_THRESHOLDS),
+    audioEvidence: evidenceClip ? { mime: evidenceClip.mime, bytes: evidenceClip.bytes, started: evidenceClip.started, ended: evidenceClip.ended, sha256: evidenceClip.sha256 } : null,
+    speakerCount: Object.keys(fingerprinter.speakers).length,
+    totalSessions: JSON.parse(localStorage.getItem(STORAGE_KEYS.sessions) || '[]').length,
+    speakers: fingerprinter.speakers
+  };
+  // Tamper-evident integrity hash over the canonical payload (hash excluded)
+  var hash = await sha256Hex(JSON.stringify(payload));
+  var out = Object.assign({}, payload, { integrity: { algorithm: 'SHA-256', hash: hash || 'unavailable' } });
+  return JSON.stringify(out, null, 2);
+}
+
+async function handleExportSpeakers() {
+  if (!fingerprinter || Object.keys(fingerprinter.speakers).length === 0) { dbg('No speakers to export'); return; }
+  var json = await buildSpeakerJson();
+  downloadFile('voice_forensics_speakers_' + formatFileDate() + '.json', json, 'application/json');
+  dbg('Exported ' + Object.keys(fingerprinter.speakers).length + ' speaker profiles');
+}
+
+// ---- Verify an exported library's integrity hash; returns {ok, computed, stored} ----
+async function verifyIntegrity(obj) {
+  if (!obj || !obj.integrity || !obj.integrity.hash || obj.integrity.hash === 'unavailable') return { ok: null };
+  var stored = obj.integrity.hash;
+  var clone = Object.assign({}, obj);
+  delete clone.integrity;
+  var computed = await sha256Hex(JSON.stringify(clone));
+  return { ok: computed === stored, computed: computed, stored: stored };
+}
+
+// ---- Reference library (imported known voiceprints used for verification) ----
+var referenceLibrary = { speakers: {}, meta: null };
+
+function readJsonFile(input, cb) {
+  var file = input.files && input.files[0];
+  if (!file) return;
+  var reader = new FileReader();
+  reader.onload = function(e) {
+    try { cb(JSON.parse(e.target.result), file.name); }
+    catch (err) { dbg('Import failed: invalid JSON'); showVerify('<span style="color:var(--accent-red)">Invalid JSON file</span>'); }
+  };
+  reader.onerror = function() { dbg('File read error'); };
+  reader.readAsText(file);
+  input.value = ''; // allow re-selecting the same file
+}
+
+async function handleImportLibrary(input) {
+  readJsonFile(input, async function(obj, fname) {
+    var spk = obj.speakers || {};
+    if (obj.format === 'VoiceForensics-ReferenceEnrollment-v1' && obj.enrollments) {
+      spk = {};
+      for (var i = 0; i < obj.enrollments.length; i++) {
+        var e = obj.enrollments[i];
+        var eid = e.person_label || ('REF_' + String(i+1).padStart(3,'0'));
+        spk[eid] = e;
+      }
+    }
+    var n = Object.keys(spk).length;
+    if (n === 0) { showVerify('<span style="color:var(--accent-red)">No speakers found in file</span>'); return; }
+    var integ = await verifyIntegrity(obj);
+    var embCount = 0;
+    for (var id in spk) { if (spk[id].embedding_256d) embCount++; }
+    referenceLibrary = { speakers: spk, meta: { file: fname, exported: obj.exported, deviceId: obj.deviceId, integrity: integ, processing: obj.processing || null } };
+    var badge = integ.ok === true ? '<span style="color:var(--accent-green)">INTACT ✓</span>'
+              : integ.ok === false ? '<span style="color:var(--accent-red)">HASH MISMATCH — TAMPERED ✗</span>'
+              : '<span style="color:var(--text-dim)">no hash</span>';
+    var embInfo = embCount > 0 ? '<div style="font-size:9px;color:var(--accent-cyan);margin-top:2px">' + embCount + '/' + n + ' have 256-D embeddings' + (obj.processing ? ' (' + obj.processing.embedding_model + ')' : '') + '</div>' : '';
+    showVerify('<div style="font-weight:700;color:var(--accent-purple)">Reference library loaded</div>' +
+      '<div style="font-size:10px;margin-top:3px">' + n + ' known voiceprints | integrity: ' + badge + '</div>' +
+      embInfo +
+      (obj.exported ? '<div style="font-size:9px;color:var(--text-dim)">exported ' + new Date(obj.exported).toLocaleString() + (obj.deviceId ? ' · ' + obj.deviceId : '') + '</div>' : '') +
+      '<div style="font-size:9px;color:var(--text-dim);margin-top:2px">Now tap VERIFY VOICE to match a live speaker, VERIFY FILE to match a saved sample, or MATCH ROSTER to compare all references vs live speakers.</div>');
+    dbg('Imported ' + n + ' reference voiceprints (' + embCount + ' with embeddings), integrity=' + integ.ok);
+  });
+}
+
+// Match a feature vector against the reference library; returns ranked matches
+function matchAgainstReference(features, embedding) {
+  var results = [];
+  for (var id in referenceLibrary.speakers) {
+    var prof = referenceLibrary.speakers[id];
+    var featureScore = fingerprinter.compareFeatures(features, prof.avgFeatures || prof);
+    var embScore = null;
+    var matchMode = 'feature';
+    if (embedding && prof.embedding_256d) {
+      var refModel = prof.embedding_model || referenceLibrary.meta?.processing?.embedding_model;
+      if (refModel && refModel === PROCESSING_META.embedding_model) {
+        embScore = VoiceFingerprint.cosineSimilarity(embedding, prof.embedding_256d);
+        matchMode = 'embedding';
+      } else if (refModel && refModel !== PROCESSING_META.embedding_model && !MATCH_THRESHOLDS.cross_model_comparison) {
+        matchMode = 'model_mismatch';
+      }
+    }
+    results.push({
+      id: id,
+      name: (prof.person_label || prof.name || id),
+      score: embScore !== null ? embScore : featureScore,
+      featureScore: featureScore,
+      embeddingScore: embScore,
+      matchMode: matchMode
+    });
+  }
+  results.sort(function(a, b) { return b.score - a.score; });
+  return results;
+}
+
+function matchRosterAgainstLive() {
+  if (Object.keys(referenceLibrary.speakers).length === 0) { showVerify('<span style="color:var(--accent-red)">Import a reference roster first</span>'); return; }
+  if (!fingerprinter || Object.keys(fingerprinter.speakers).length === 0) { showVerify('<span style="color:var(--accent-red)">No live speakers enrolled yet — run a scan first</span>'); return; }
+  var html = '<div style="font-weight:700;color:var(--accent-purple)">Reference Roster vs Live Speakers</div>';
+  var refModel = referenceLibrary.meta?.processing?.embedding_model;
+  var modelMatch = refModel && refModel === PROCESSING_META.embedding_model;
+  if (refModel && !modelMatch && !MATCH_THRESHOLDS.cross_model_comparison) {
+    html += '<div style="font-size:10px;color:var(--accent-red);margin:4px 0">⚠ Model mismatch: ref=' + refModel + ' live=' + PROCESSING_META.embedding_model + ' — embedding comparison blocked. Reprocess required.</div>';
+  }
+  for (var refId in referenceLibrary.speakers) {
+    var ref = referenceLibrary.speakers[refId];
+    var refName = ref.person_label || ref.name || refId;
+    var bestMatch = null, bestScore = 0;
+    for (var liveId in fingerprinter.speakers) {
+      var live = fingerprinter.speakers[liveId];
+      var fScore = fingerprinter.compareFeatures(ref.avgFeatures || ref, live.avgFeatures);
+      var eScore = null;
+      if (modelMatch && ref.embedding_256d && live.embedding_256d) {
+        eScore = VoiceFingerprint.cosineSimilarity(ref.embedding_256d, live.embedding_256d);
+      }
+      var score = eScore !== null ? eScore : fScore;
+      if (score > bestScore) { bestScore = score; bestMatch = { id: liveId, name: live.name, score: score, mode: eScore !== null ? 'embedding' : 'feature' }; }
+    }
+    var v = bestMatch ? verdictFor(bestMatch.score, bestMatch.mode) : { label: 'NO DATA', color: 'var(--text-dim)' };
+    var pct = bestMatch ? (bestMatch.score * 100).toFixed(1) : '0';
+    html += '<div style="display:flex;align-items:center;gap:6px;font-size:10px;margin-top:4px;padding:3px 0;border-bottom:1px solid var(--border)">' +
+      '<span style="min-width:100px;font-weight:600">' + refName + '</span>' +
+      '<span style="min-width:60px;color:var(--text-dim)">' + (bestMatch ? bestMatch.id : '—') + '</span>' +
+      '<div style="flex:1;height:6px;background:var(--meter-bg);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + v.color + '"></div></div>' +
+      '<span style="min-width:40px;text-align:right">' + pct + '%</span>' +
+      '<span style="min-width:16px;font-size:8px;color:var(--text-dim)">' + (bestMatch ? bestMatch.mode[0].toUpperCase() : '') + '</span></div>';
+  }
+  var t = MATCH_THRESHOLDS.feature_similarity;
+  html += '<div style="font-size:8px;color:var(--text-dim);margin-top:6px">Thresholds: ≥' + (t.same_speaker_strong*100) + '% match · ≥' + (t.same_speaker_candidate*100) + '% probable · ≥' + (t.inconclusive_low*100) + '% possible | F=feature E=embedding</div>';
+  showVerify(html);
+}
+
+function verdictFor(score, mode) {
+  var t = (mode === 'embedding') ? MATCH_THRESHOLDS.embedding_cosine : MATCH_THRESHOLDS.feature_similarity;
+  if (score >= t.same_speaker_strong) return { label: 'IDENTITY MATCH', color: 'var(--accent-green)', tier: 'strong' };
+  if (score >= t.same_speaker_candidate) return { label: 'PROBABLE MATCH', color: 'var(--accent-amber)', tier: 'candidate' };
+  if (score >= t.inconclusive_low) return { label: 'POSSIBLE / INCONCLUSIVE', color: 'var(--accent-amber)', tier: 'inconclusive' };
+  return { label: 'NO MATCH', color: 'var(--accent-red)', tier: 'none' };
+}
+
+function renderMatches(title, results, extra) {
+  if (results.length === 0) { showVerify('<span style="color:var(--accent-red)">Reference library is empty — IMPORT LIBRARY first</span>'); return; }
+  var top = results[0];
+  var mode = top.matchMode || 'feature';
+  var v = verdictFor(top.score, mode);
+  var modeLabel = mode === 'embedding' ? ' [embedding]' : mode === 'model_mismatch' ? ' [MODEL MISMATCH]' : ' [feature]';
+  var html = '<div style="font-weight:700;color:' + v.color + '">' + v.label + modeLabel + '</div>' +
+    '<div style="font-size:11px;margin-top:2px">Best: <b>' + top.name + '</b> (' + top.id + ') — ' + (top.score * 100).toFixed(1) + '%</div>';
+  if (mode === 'model_mismatch') html += '<div style="font-size:9px;color:var(--accent-red);margin-top:2px">⚠ Embedding models differ — comparison blocked. Falling back to feature similarity. Reprocess with same model for embedding match.</div>';
+  if (extra) html += '<div style="font-size:9px;color:var(--text-dim)">' + extra + '</div>';
+  html += '<div style="font-size:10px;color:var(--text-dim);margin-top:4px">Ranked candidates:</div>';
+  for (var i = 0; i < Math.min(5, results.length); i++) {
+    var r = results[i];
+    var pct = (r.score * 100).toFixed(1);
+    var rm = r.matchMode || 'feature';
+    var mTag = rm === 'embedding' ? 'E' : rm === 'model_mismatch' ? '✗' : 'F';
+    html += '<div style="display:flex;align-items:center;gap:6px;font-size:10px;margin-top:2px">' +
+      '<span style="min-width:90px">' + r.name + '</span>' +
+      '<div style="flex:1;height:6px;background:var(--meter-bg);border-radius:3px;overflow:hidden"><div style="height:100%;width:' + pct + '%;background:' + verdictFor(r.score, rm).color + '"></div></div>' +
+      '<span style="min-width:42px;text-align:right">' + pct + '%</span>' +
+      '<span style="min-width:12px;font-size:8px;color:var(--text-dim)">' + mTag + '</span></div>';
+  }
+  var t = MATCH_THRESHOLDS.feature_similarity;
+  html += '<div style="font-size:8px;color:var(--text-dim);margin-top:4px">F=feature E=embedding | strong ≥' + (t.same_speaker_strong*100) + '% · candidate ≥' + (t.same_speaker_candidate*100) + '% · inconclusive ≥' + (t.inconclusive_low*100) + '%</div>';
+  showVerify(html);
+}
+
+function handleVerifyVoice() {
+  if (Object.keys(referenceLibrary.speakers).length === 0) { showVerify('<span style="color:var(--accent-red)">Import a reference library first (IMPORT LIBRARY)</span>'); return; }
+  if (!isScanning || !analyser) { showVerify('<span style="color:var(--accent-amber)">Start scanning, let the target speak, then tap VERIFY VOICE</span>'); return; }
+  var bufLen = analyser.frequencyBinCount;
+  var timeData = new Float32Array(bufLen);
+  var freqData = new Uint8Array(bufLen);
+  analyser.getFloatTimeDomainData(timeData);
+  analyser.getByteFrequencyData(freqData);
+  var snr = estimateSNR(timeData);
+  if (!snr.hasVoice) { showVerify('<span style="color:var(--accent-amber)">No clear voice this instant — try again while the person is speaking</span>'); return; }
+  var features = fingerprinter.extractFeatures(freqData, timeData, ctx.sampleRate);
+  var embedding = fingerprinter.computeEmbedding256(features);
+  renderMatches('live', matchAgainstReference(features, embedding), 'live sample · SNR ' + snr.snr.toFixed(0) + 'dB · model: ' + PROCESSING_META.embedding_model + ' · ' + new Date().toLocaleTimeString());
+  dbg('Verified live voice against ' + Object.keys(referenceLibrary.speakers).length + ' references');
+}
+
+async function handleVerifyFile(input) {
+  if (Object.keys(referenceLibrary.speakers).length === 0) { showVerify('<span style="color:var(--accent-red)">Import a reference library first (IMPORT LIBRARY)</span>'); input.value=''; return; }
+  readJsonFile(input, async function(obj, fname) {
+    // Accept either a full library export or a single { avgFeatures } / feature object
+    var probes = [];
+    if (obj.speakers) { for (var id in obj.speakers) probes.push({ name: obj.speakers[id].name || id, features: obj.speakers[id].avgFeatures }); }
+    else if (obj.avgFeatures) probes.push({ name: obj.name || fname, features: obj.avgFeatures });
+    else if (obj.mfcc || obj.f1 || obj.centroid) probes.push({ name: fname, features: obj });
+    if (probes.length === 0) { showVerify('<span style="color:var(--accent-red)">No voiceprint features found in file</span>'); return; }
+    var integ = await verifyIntegrity(obj);
+    var integTxt = integ.ok === true ? 'file integrity INTACT ✓' : integ.ok === false ? 'file integrity MISMATCH ✗' : 'file has no hash';
+    // Verify the first probe (or the strongest across all probes)
+    var best = null;
+    probes.forEach(function(p) {
+      if (!p.features) return;
+      var res = matchAgainstReference(p.features);
+      if (res.length && (!best || res[0].score > best.top)) best = { probe: p.name, results: res, top: res[0].score };
+    });
+    if (!best) { showVerify('<span style="color:var(--accent-red)">Could not read features from file</span>'); return; }
+    renderMatches('file', best.results, 'probe: ' + best.probe + ' · ' + integTxt);
+    dbg('Verified file "' + fname + '" against reference library');
+  });
+}
+
+function showVerify(html) {
+  var el = $('verifyResult');
+  if (!el) return;
+  el.style.display = 'block';
+  el.style.background = 'var(--bg-panel)';
+  el.style.border = '1px solid var(--border)';
+  el.style.borderRadius = '10px';
+  el.style.padding = '10px';
+  el.style.fontFamily = "'SF Mono',ui-monospace,monospace";
+  el.innerHTML = html;
+}
+
+function handleClearData() {
+  if (!confirm('Clear ALL stored data? This removes the detection log and speaker library permanently.')) return;
+  localStorage.removeItem(STORAGE_KEYS.log);
+  localStorage.removeItem(STORAGE_KEYS.speakers);
+  localStorage.removeItem(STORAGE_KEYS.sessions);
+  detectionLog = [];
+  if (fingerprinter) { fingerprinter.speakers = {}; fingerprinter.nextId = 1; }
+  scanStats.uniqueSpeakers = new Set();
+  $('statSpeakers').textContent = '0';
+  $('mSpkrs').textContent = '0';
+  updateSpeakerList(null);
+  updateStorageInfo();
+  dbg('All stored data cleared');
+}
+
+function downloadFile(filename, content, mimeType) {
+  var blob = new Blob([content], { type: mimeType });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
+function formatFileDate() {
+  var d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth()+1).padStart(2,'0') + '-' + String(d.getDate()).padStart(2,'0') + '_' + String(d.getHours()).padStart(2,'0') + String(d.getMinutes()).padStart(2,'0');
+}
+
+// ============================================================
+// PURE-JS ZIP WRITER (store/no-compression) — fully self-contained,
+// no external library. Produces a standard .zip readable by any tool.
+// ============================================================
+
+var _crcTable = (function() {
+  var t = new Uint32Array(256);
+  for (var n = 0; n < 256; n++) {
+    var c = n;
+    for (var k = 0; k < 8; k++) c = (c & 1) ? (0xEDB88320 ^ (c >>> 1)) : (c >>> 1);
+    t[n] = c >>> 0;
+  }
+  return t;
+})();
+function crc32(bytes) {
+  var c = 0xFFFFFFFF;
+  for (var i = 0; i < bytes.length; i++) c = _crcTable[(c ^ bytes[i]) & 0xFF] ^ (c >>> 8);
+  return (c ^ 0xFFFFFFFF) >>> 0;
+}
+function _u16(n) { return [n & 0xFF, (n >>> 8) & 0xFF]; }
+function _u32(n) { return [n & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF]; }
+function _strBytes(s) { return new TextEncoder().encode(s); }
+
+// files: [{ name: string, data: Uint8Array }]  -> Blob (application/zip)
+function makeZip(files) {
+  var chunks = [];      // array of Uint8Array
+  var central = [];     // central directory records
+  var offset = 0;
+  // DOS time/date (fixed; not critical for forensic content, hashes are)
+  var dtime = _u16(0), ddate = _u16(0x21); // 1980-01-01
+  files.forEach(function(f) {
+    var nameB = _strBytes(f.name);
+    var data = f.data;
+    var crc = crc32(data);
+    var localHeader = [].concat(
+      _u32(0x04034b50), _u16(20), _u16(0), _u16(0), dtime, ddate,
+      _u32(crc), _u32(data.length), _u32(data.length),
+      _u16(nameB.length), _u16(0)
+    );
+    var lh = new Uint8Array(localHeader);
+    chunks.push(lh, nameB, data);
+    var localSize = lh.length + nameB.length + data.length;
+    var cd = [].concat(
+      _u32(0x02014b50), _u16(20), _u16(20), _u16(0), _u16(0), dtime, ddate,
+      _u32(crc), _u32(data.length), _u32(data.length),
+      _u16(nameB.length), _u16(0), _u16(0), _u16(0), _u16(0),
+      _u32(0), _u32(offset)
+    );
+    central.push({ head: new Uint8Array(cd), name: nameB });
+    offset += localSize;
+  });
+  var cdStart = offset, cdSize = 0;
+  central.forEach(function(c) { chunks.push(c.head, c.name); cdSize += c.head.length + c.name.length; });
+  var eocd = new Uint8Array([].concat(
+    _u32(0x06054b50), _u16(0), _u16(0),
+    _u16(files.length), _u16(files.length),
+    _u32(cdSize), _u32(cdStart), _u16(0)
+  ));
+  chunks.push(eocd);
+  return new Blob(chunks, { type: 'application/zip' });
+}
+
+// ============================================================
+// DOWNLOAD ALL — bundles log CSV + speaker library + raw audio +
+// chain-of-custody manifest into a single evidence .zip
+// ============================================================
+
+// Resolve the session-audio start time (ms) that timeline offsets are measured from
+function sessionStartMs() {
+  if (evidenceClip && evidenceClip.started) {
+    var t = Date.parse(evidenceClip.started);
+    if (!isNaN(t)) return t;
+  }
+  if (sessionStartFull) return sessionStartFull.getTime();
+  if (detectionLog.length > 0) return detectionLog[0].timestamp;
+  return Date.now();
+}
+
+function _vttTime(sec) {
+  if (sec < 0) sec = 0;
+  var h = Math.floor(sec / 3600);
+  var m = Math.floor((sec % 3600) / 60);
+  var s = Math.floor(sec % 60);
+  var ms = Math.round((sec - Math.floor(sec)) * 1000);
+  function p(n, w) { n = String(n); while (n.length < w) n = '0' + n; return n; }
+  return p(h,2) + ':' + p(m,2) + ':' + p(s,2) + '.' + p(ms,3);
+}
+
+// Time-aligned session timeline: each voiced detection mapped to an offset into
+// the session audio, with speaker, dialogue (transcript), jitter, shimmer, pitch, SNR.
+function buildSessionTimeline() {
+  var startMs = sessionStartMs();
+  var entries = [];
+  for (var i = 0; i < detectionLog.length; i++) {
+    var d = detectionLog[i];
+    var offset = Math.max(0, (d.timestamp - startMs) / 1000);
+    var dur = (d.speech_seconds && d.speech_seconds > 0) ? d.speech_seconds : 2.0;
+    entries.push({
+      t_start_sec: Math.round(offset * 1000) / 1000,
+      t_end_sec: Math.round((offset + dur) * 1000) / 1000,
+      wall_clock: new Date(d.timestamp).toISOString(),
+      speaker_id: d.speakerId || null,
+      speaker_name: d.speakerName || null,
+      dialogue: d.transcript || '',
+      jitter_pct: d.jitter ? Math.round(d.jitter * 10000) / 100 : 0,
+      shimmer_pct: d.shimmer ? Math.round(d.shimmer * 10000) / 100 : 0,
+      pitch_hz: d.pitch ? Math.round(d.pitch) : 0,
+      snr_db: d.snr ? Math.round(d.snr * 10) / 10 : 0,
+      confidence: d.confidence ? Math.round(d.confidence * 1000) / 1000 : 0
+    });
+  }
+  return JSON.stringify({
+    format: 'VoiceForensics-SessionTimeline-v1',
+    session_audio_start: new Date(startMs).toISOString(),
+    note: 't_start_sec / t_end_sec are offsets (seconds) into session_audio. Align this timeline while playing the session recording.',
+    entry_count: entries.length,
+    entries: entries
+  }, null, 2);
+}
+
+// WebVTT subtitle track aligned to session_audio: shows speaker + dialogue + jitter
+// per cue. Playable in any media player alongside the session recording.
+function buildSessionVtt() {
+  var startMs = sessionStartMs();
+  var vtt = 'WEBVTT\n\n';
+  vtt += 'NOTE Voice Forensics session transcript — aligned to session_audio start ' + new Date(startMs).toISOString() + '\n\n';
+  var cueNum = 0;
+  for (var i = 0; i < detectionLog.length; i++) {
+    var d = detectionLog[i];
+    var offset = Math.max(0, (d.timestamp - startMs) / 1000);
+    var dur = (d.speech_seconds && d.speech_seconds > 0) ? d.speech_seconds : 2.0;
+    var spk = d.speakerName || d.speakerId || 'Unknown';
+    var line = (d.transcript && d.transcript.trim()) ? d.transcript.trim() : '(voice detected)';
+    var jit = d.jitter ? (d.jitter * 100).toFixed(1) + '%' : '—';
+    var pitch = d.pitch ? Math.round(d.pitch) + 'Hz' : '—';
+    cueNum++;
+    vtt += cueNum + '\n';
+    vtt += _vttTime(offset) + ' --> ' + _vttTime(offset + dur) + '\n';
+    vtt += '<v ' + spk + '>' + line.replace(/</g, '‹').replace(/>/g, '›') + ' [jitter ' + jit + ' · pitch ' + pitch + ']\n\n';
+  }
+  if (cueNum === 0) vtt += 'NOTE No voiced detections in this session.\n';
+  return vtt;
+}
+
+async function handleDownloadAll() {
+  var hasLog = detectionLog.length > 0;
+  var hasSpk = fingerprinter && Object.keys(fingerprinter.speakers).length > 0;
+  if (!hasLog && !hasSpk && !evidenceClip) { dbg('Nothing to bundle yet — run a scan first'); showVerify('<span style="color:var(--accent-amber)">No data to bundle yet — run a scan first</span>'); return; }
+  dbg('Building evidence ZIP...');
+  var stamp = formatFileDate();
+  var files = [];
+  var manifestItems = [];
+
+  // 1) Detection log CSV
+  if (hasLog) {
+    var csv = await buildLogCsv();
+    var csvBytes = _strBytes(csv);
+    files.push({ name: 'detection_log.csv', data: csvBytes });
+    manifestItems.push({ file: 'detection_log.csv', bytes: csvBytes.length, sha256: await sha256HexBytes(csvBytes), records: detectionLog.length });
+  }
+  // 2) Speaker library JSON
+  if (hasSpk) {
+    var sjson = await buildSpeakerJson();
+    var sBytes = _strBytes(sjson);
+    files.push({ name: 'speaker_library.json', data: sBytes });
+    manifestItems.push({ file: 'speaker_library.json', bytes: sBytes.length, sha256: await sha256HexBytes(sBytes), speakers: Object.keys(fingerprinter.speakers).length });
+  }
+  // 3) Raw session audio
+  if (evidenceClip) {
+    var ext = evidenceClip.mime.indexOf('mp4') >= 0 ? 'm4a' : evidenceClip.mime.indexOf('ogg') >= 0 ? 'ogg' : evidenceClip.mime.indexOf('webm') >= 0 ? 'webm' : 'audio';
+    var abuf = new Uint8Array(await evidenceClip.blob.arrayBuffer());
+    files.push({ name: 'session_audio.' + ext, data: abuf });
+    manifestItems.push({ file: 'session_audio.' + ext, bytes: abuf.length, sha256: evidenceClip.sha256, mime: evidenceClip.mime, started: evidenceClip.started, ended: evidenceClip.ended });
+  }
+
+  // 4) Per-speaker audio WAV files
+  var speakerIds = Object.keys(speakerAudioClips);
+  for (var si = 0; si < speakerIds.length; si++) {
+    var spkId = speakerIds[si];
+    var result = buildSpeakerCombinedWav(spkId);
+    if (!result) continue;
+    var spkName = (fingerprinter && fingerprinter.speakers[spkId] && fingerprinter.speakers[spkId].name) ? String(fingerprinter.speakers[spkId].name).replace(/[^a-zA-Z0-9_-]/g, '_') : spkId;
+    var wavName = 'speakers/' + spkId + '_' + spkName + '.wav';
+    var wavHash = await sha256HexBytes(result.wav);
+    files.push({ name: wavName, data: result.wav });
+    manifestItems.push({ file: wavName, bytes: result.wav.length, sha256: wavHash, speaker: spkId, clips: result.clips, duration_seconds: result.seconds });
+  }
+
+  // 5) Time-aligned session timeline + WebVTT subtitles (dialogue/jitter/speaker synced to session audio)
+  if (hasLog) {
+    var timelineStr = buildSessionTimeline();
+    var timelineBytes = _strBytes(timelineStr);
+    files.push({ name: 'session_timeline.json', data: timelineBytes });
+    manifestItems.push({ file: 'session_timeline.json', bytes: timelineBytes.length, sha256: await sha256HexBytes(timelineBytes), entries: detectionLog.length });
+
+    var vttStr = buildSessionVtt();
+    var vttBytes = _strBytes(vttStr);
+    files.push({ name: 'session_transcript.vtt', data: vttBytes });
+    manifestItems.push({ file: 'session_transcript.vtt', bytes: vttBytes.length, sha256: await sha256HexBytes(vttBytes) });
+  }
+
+  // 6) Chain-of-custody manifest
+  var manifest = {
+    format: 'VoiceForensics-EvidenceBundle-v2',
+    generated: new Date().toISOString(),
+    deviceId: getDeviceId(),
+    case: currentCaseInfo(),
+    processing: Object.assign({}, PROCESSING_META),
+    match_thresholds: Object.assign({}, MATCH_THRESHOLDS),
+    app: { title: 'iPhone Voice Fingerprint Scanner', url: location.href.split('?')[0] },
+    sessions: JSON.parse(localStorage.getItem(STORAGE_KEYS.sessions) || '[]'),
+    contents: manifestItems
+  };
+  var manifestStr = JSON.stringify(manifest, null, 2);
+  // Manifest self-hash (over everything above)
+  var manifestHash = await sha256HexBytes(_strBytes(manifestStr));
+  var manifestFinal = JSON.stringify(Object.assign({}, manifest, { manifestSha256: manifestHash }), null, 2);
+  files.push({ name: 'manifest.json', data: _strBytes(manifestFinal) });
+
+  // 7) Human-readable README
+  var readme = 'VOICE FORENSICS EVIDENCE BUNDLE\n' +
+    '================================\n\n' +
+    'Generated: ' + manifest.generated + '\n' +
+    'Device ID: ' + manifest.deviceId + '\n' +
+    'Case ID:   ' + (manifest.case.caseId || '(none)') + '\n' +
+    'Operator:  ' + (manifest.case.operator || '(none)') + '\n' +
+    'Notes:     ' + (manifest.case.notes || '(none)') + '\n\n' +
+    'CONTENTS:\n' +
+    manifestItems.map(function(m) { return '  - ' + m.file + '  (' + m.bytes + ' bytes)\n      SHA-256: ' + (m.sha256 || 'n/a'); }).join('\n') + '\n\n' +
+    'INTEGRITY:\n' +
+    '  Each file above has a SHA-256 recorded in manifest.json.\n' +
+    '  Verify with:  shasum -a 256 <file>  and compare to manifest.json.\n' +
+    '  manifest.json self-hash (SHA-256): ' + manifestHash + '\n\n' +
+    'PROCESSING:\n' +
+    '  Embedding model: ' + PROCESSING_META.embedding_model + ' v' + PROCESSING_META.embedding_model_version + '\n' +
+    '  Embedding dim: ' + PROCESSING_META.embedding_dim + ' (L2 normalized)\n' +
+    '  VAD: ' + PROCESSING_META.vad_model + ' | Diarization: ' + PROCESSING_META.diarization_model + '\n' +
+    '  LPC order: ' + PROCESSING_META.lpc_order + ' | Pre-emphasis: ' + PROCESSING_META.pre_emphasis + '\n\n' +
+    'SESSION TIMELINE & TRANSCRIPT:\n' +
+    '  session_audio.*        — full continuous session recording\n' +
+    '  session_timeline.json  — dialogue, jitter, shimmer, pitch & speaker per moment,\n' +
+    '                           as offsets (seconds) into the session recording\n' +
+    '  session_transcript.vtt — WebVTT subtitles (speaker + dialogue + jitter). Load\n' +
+    '                           alongside session_audio in any media player to see who\n' +
+    '                           spoke, what they said, and voice quality in sync.\n' +
+    '  speakers/*.wav         — per-speaker isolated audio clips\n\n' +
+    'THRESHOLDS:\n' +
+    '  Feature similarity: strong ≥' + MATCH_THRESHOLDS.feature_similarity.same_speaker_strong +
+    ' | candidate ≥' + MATCH_THRESHOLDS.feature_similarity.same_speaker_candidate +
+    ' | inconclusive ≥' + MATCH_THRESHOLDS.feature_similarity.inconclusive_low + '\n' +
+    '  Embedding cosine: strong ≥' + MATCH_THRESHOLDS.embedding_cosine.same_speaker_strong +
+    ' | candidate ≥' + MATCH_THRESHOLDS.embedding_cosine.same_speaker_candidate +
+    ' | inconclusive ≥' + MATCH_THRESHOLDS.embedding_cosine.inconclusive_low + '\n' +
+    '  Cross-model comparison: ' + (MATCH_THRESHOLDS.cross_model_comparison ? 'ALLOWED' : 'BLOCKED') + '\n\n' +
+    'NOTE: Screening-grade voice biometrics. Not a substitute for court-\n' +
+    'validated ASV or expert examination. Use only with proper authorization.\n' +
+    'Acoustic consistency only. Not sufficient for legal identity confirmation\n' +
+    'without same-model embedding-to-embedding match.\n';
+  files.push({ name: 'README.txt', data: _strBytes(readme) });
+
+  // Build + download the zip
+  var zipBlob = makeZip(files);
+  var url = URL.createObjectURL(zipBlob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'voice_forensics_evidence_' + stamp + '.zip';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  setTimeout(function() { URL.revokeObjectURL(url); }, 2000);
+  var kb = (zipBlob.size / 1024).toFixed(0);
+  dbg('Evidence ZIP ready: ' + files.length + ' files, ' + kb + 'KB');
+  showVerify('<div style="font-weight:700;color:var(--accent-green)">Evidence bundle exported</div>' +
+    '<div style="font-size:10px;margin-top:3px">' + files.length + ' files · ' + kb + 'KB · manifest SHA-256 ' + manifestHash.slice(0,12) + '…</div>' +
+    '<div style="font-size:9px;color:var(--text-dim);margin-top:2px">' + manifestItems.map(function(m){return m.file;}).join(', ') + ', manifest.json, README.txt</div>');
+}
+
+// Settings
+var settings = {
+  noiseReduction: true, freqComp: true, dynamicRange: true, agcBypass: false,
+  transcription: true, fingerprint: true, autoEnroll: true, bilingual: true,
+  recordAudio: true,
+  gain: 1.0
+};
+
+// Case / operator metadata (chain-of-custody), persisted
+function loadCaseInfo() {
+  try { return JSON.parse(localStorage.getItem('vfs_case_info') || '{}'); } catch (e) { return {}; }
+}
+function saveCaseInfo() {
+  var info = {
+    caseId: (document.getElementById('caseId') || {}).value || '',
+    operator: (document.getElementById('caseOperator') || {}).value || '',
+    notes: (document.getElementById('caseNotes') || {}).value || ''
+  };
+  try { localStorage.setItem('vfs_case_info', JSON.stringify(info)); } catch (e) {}
+  return info;
+}
+function currentCaseInfo() {
+  return {
+    caseId: (document.getElementById('caseId') || {}).value || '',
+    operator: (document.getElementById('caseOperator') || {}).value || '',
+    notes: (document.getElementById('caseNotes') || {}).value || ''
+  };
+}
+
+function $(id) { return document.getElementById(id); }
+
+// Boot check
+dbg('Script loaded OK');
+dbg('AudioContext: ' + (AudioCtx ? 'YES' : 'NO'));
+dbg('getUserMedia: ' + (navigator.mediaDevices && navigator.mediaDevices.getUserMedia ? 'YES' : 'NO'));
+dbg('SpeechRecognition: ' + (window.SpeechRecognition || window.webkitSpeechRecognition ? 'YES' : 'NO'));
+
+// ============================================================
+// MATCH THRESHOLDS & PROCESSING METADATA
+// ============================================================
+
+const MATCH_THRESHOLDS = {
+  embedding_cosine: {
+    same_speaker_strong: 0.85,
+    same_speaker_candidate: 0.75,
+    inconclusive_low: 0.65,
+    no_match_below: 0.65
+  },
+  feature_similarity: {
+    same_speaker_strong: 0.85,
+    same_speaker_candidate: 0.70,
+    inconclusive_low: 0.55,
+    no_match_below: 0.55
+  },
+  requires_listening_review: true,
+  cross_model_comparison: false
+};
+
+const PROCESSING_META = {
+  vad_model: 'energy-threshold-v1',
+  diarization_model: 'vfs-spectral-compare-v1',
+  embedding_model: 'vfs-spectral-projection-v1',
+  embedding_model_version: '1.0.0',
+  embedding_dim: 256,
+  embedding_l2_normalized: true,
+  model_sample_rate: 16000,
+  capture_sample_rate: null, // set at runtime to ctx.sampleRate
+  normalization: 'l2',
+  noise_reduction: 'conservative',
+  analysis_window_samples: 2048,
+  analysis_window_sec: null, // set at runtime: 2048 / ctx.sampleRate
+  hop_sec: 0.15,
+  min_speech_sec: 0.3,
+  lpc_order: 20,
+  pre_emphasis: 0.63,
+  formant_extraction: 'lpc-levinson-durbin'
+};
+
+// ============================================================
+// SPEAKER FINGERPRINTING (Spectral + MFCC-like)
+// ============================================================
+
+class VoiceFingerprint {
+  constructor() {
+    this.speakers = {};
+    this.nextId = 1;
+    this.minConfidence = 0.65;
+    loadSpeakerLibrary(this);
+  }
+
+  extractFeatures(freqData, timeData, sampleRate) {
+    const features = {};
+    this._lastFreqData = freqData; // used by nasalance computation
+
+    // Spectral centroid
+    let weightedSum = 0, totalEnergy = 0;
+    for (let i = 0; i < freqData.length; i++) {
+      const mag = freqData[i] / 255;
+      weightedSum += i * mag;
+      totalEnergy += mag;
+    }
+    features.centroid = totalEnergy > 0 ? weightedSum / totalEnergy : 0;
+
+    // Spectral spread
+    let spreadSum = 0;
+    for (let i = 0; i < freqData.length; i++) {
+      const mag = freqData[i] / 255;
+      spreadSum += mag * Math.pow(i - features.centroid, 2);
+    }
+    features.spread = totalEnergy > 0 ? Math.sqrt(spreadSum / totalEnergy) : 0;
+
+    // Spectral flatness
+    let geoSum = 0, arithSum = 0;
+    const n = freqData.length;
+    for (let i = 1; i < n; i++) {
+      const mag = Math.max(freqData[i] / 255, 1e-10);
+      geoSum += Math.log(mag);
+      arithSum += mag;
+    }
+    features.flatness = arithSum > 0 ? Math.exp(geoSum / (n-1)) / (arithSum / (n-1)) : 0;
+
+    // Spectral rolloff (85%)
+    let cumEnergy = 0;
+    const rolloffThresh = totalEnergy * 0.85;
+    features.rolloff = n;
+    for (let i = 0; i < n; i++) {
+      cumEnergy += freqData[i] / 255;
+      if (cumEnergy >= rolloffThresh) { features.rolloff = i; break; }
+    }
+
+    // MFCC-like: energy in mel-scale bands (13 bands)
+    features.mfcc = [];
+    const numBands = 13;
+    for (let b = 0; b < numBands; b++) {
+      const lo = Math.floor(Math.pow(b / numBands, 1.5) * n);
+      const hi = Math.floor(Math.pow((b+1) / numBands, 1.5) * n);
+      let bandEnergy = 0;
+      for (let i = lo; i < hi && i < n; i++) bandEnergy += freqData[i] / 255;
+      features.mfcc.push(bandEnergy / Math.max(1, hi - lo));
+    }
+
+    // Pitch estimate (autocorrelation on time domain)
+    features.pitch = this.estimatePitch(timeData, sampleRate);
+
+    // Voice-quality perturbation: jitter (period) + shimmer (amplitude)
+    const perturbation = this.estimatePerturbation(timeData, sampleRate, features.pitch);
+    features.jitter = perturbation.jitter;   // fraction (0..1), local period perturbation
+    features.shimmer = perturbation.shimmer; // fraction (0..1), local amplitude perturbation
+
+    // Formants (F1, F2, F3) via LPC spectral envelope + nasal formant/nasalance
+    const formantData = this.extractFormants(timeData, sampleRate);
+    features.f1 = formantData.f1;
+    features.f2 = formantData.f2;
+    features.f3 = formantData.f3;
+    features.f2f1 = formantData.f1 > 0 ? formantData.f2 / formantData.f1 : 0;
+    features.f3f2 = formantData.f2 > 0 ? formantData.f3 / formantData.f2 : 0;
+    features.nasalFormant = formantData.nasalFormant;
+    features.nasalance = formantData.nasalance;
+
+    // Zero-crossing rate
+    let zcr = 0;
+    for (let i = 1; i < timeData.length; i++) {
+      if ((timeData[i] >= 0 && timeData[i-1] < 0) || (timeData[i] < 0 && timeData[i-1] >= 0)) zcr++;
+    }
+    features.zcr = zcr / timeData.length;
+
+    return features;
+  }
+
+  // LPC formant extraction: autocorrelation -> Levinson-Durbin -> spectral
+  // envelope peak-picking. Also derives the nasal formant (low-frequency
+  // nasal murmur resonance) and nasalance (nasal-band energy ratio).
+  extractFormants(timeData, sampleRate) {
+    const result = { f1: 0, f2: 0, f3: 0, nasalFormant: 0, nasalance: 0 };
+    const N = Math.min(timeData.length, 2048);
+    if (N < 256) return result;
+
+    // Hamming window + mild pre-emphasis. Coefficient tuned to 0.63: strong
+    // enough to flatten glottal tilt but not so strong it suppresses F1
+    // (0.97 was found to erase the first formant on synthetic vowels).
+    const buf = new Float32Array(N);
+    let prev = 0;
+    for (let i = 0; i < N; i++) {
+      const emphasized = timeData[i] - 0.63 * prev;
+      prev = timeData[i];
+      const w = 0.54 - 0.46 * Math.cos(2 * Math.PI * i / (N - 1));
+      buf[i] = emphasized * w;
+    }
+
+    // Autocorrelation up to LPC order (20 resolves close-spaced formants)
+    const order = 20;
+    const R = new Float64Array(order + 1);
+    for (let lag = 0; lag <= order; lag++) {
+      let s = 0;
+      for (let i = lag; i < N; i++) s += buf[i] * buf[i - lag];
+      R[lag] = s;
+    }
+    if (R[0] === 0) return result;
+
+    // Levinson-Durbin recursion -> LPC coefficients
+    const a = new Float64Array(order + 1);
+    let err = R[0];
+    a[0] = 1;
+    for (let i = 1; i <= order; i++) {
+      let acc = R[i];
+      for (let j = 1; j < i; j++) acc += a[j] * R[i - j];
+      const k = -acc / err;
+      const tmp = new Float64Array(order + 1);
+      for (let j = 0; j <= i; j++) tmp[j] = a[j];
+      for (let j = 1; j < i; j++) a[j] = tmp[j] + k * tmp[i - j];
+      a[i] = k;
+      err *= (1 - k * k);
+      if (err <= 0) { err = 1e-9; break; }
+    }
+
+    // Evaluate LPC power spectral envelope H(f) = 1/|A(e^jw)|^2 on a grid
+    const fMin = 90, fMax = Math.min(4500, sampleRate / 2);
+    const steps = 700;
+    const env = new Float64Array(steps);
+    const freqs = new Float64Array(steps);
+    let envMax = 0;
+    for (let s = 0; s < steps; s++) {
+      const f = fMin + (fMax - fMin) * s / (steps - 1);
+      freqs[s] = f;
+      const w = 2 * Math.PI * f / sampleRate;
+      let re = 0, im = 0;
+      for (let j = 0; j <= order; j++) {
+        re += a[j] * Math.cos(j * w);
+        im -= a[j] * Math.sin(j * w);
+      }
+      const mag2 = re * re + im * im;
+      env[s] = mag2 > 1e-12 ? 1 / mag2 : 1e12;
+      if (env[s] > envMax) envMax = env[s];
+    }
+
+    // Peak-pick the envelope (ignore tiny ripples below 1.5% of the max peak)
+    const peaks = [];
+    for (let s = 1; s < steps - 1; s++) {
+      if (env[s] > env[s - 1] && env[s] >= env[s + 1] && env[s] > envMax * 0.015) peaks.push(freqs[s]);
+    }
+
+    // Assign peaks sequentially so each is used once and F1<F2<F3 is enforced
+    let f1 = 0, f2 = 0, f3 = 0;
+    for (const f of peaks) {
+      if (!f1 && f >= 200 && f <= 1100) { f1 = f; continue; }
+      if (f1 && !f2 && f > f1 + 120 && f >= 650 && f <= 3000) { f2 = f; continue; }
+      if (f2 && !f3 && f > f2 + 200 && f >= 1700 && f <= 4300) { f3 = f; continue; }
+    }
+    result.f1 = f1; result.f2 = f2; result.f3 = f3;
+
+    // Nasal formant: lowest envelope peak in the nasal murmur band (200-500 Hz)
+    for (const f of peaks) { if (f >= 200 && f <= 500) { result.nasalFormant = f; break; } }
+
+    // Nasalance: ratio of nasal-band energy (250-450 Hz) to voiced-band energy
+    // (250-3000 Hz) from the FFT magnitudes — high when nasal murmur dominates.
+    result.nasalance = this._nasalance(sampleRate);
+
+    return result;
+  }
+
+  _nasalance(sampleRate) {
+    if (!this._lastFreqData) return 0;
+    const fd = this._lastFreqData;
+    const nBins = fd.length;
+    const nyquist = sampleRate / 2;
+    const binHz = nyquist / nBins;
+    let nasalE = 0, totalE = 0;
+    for (let i = 0; i < nBins; i++) {
+      const f = i * binHz;
+      const mag = fd[i] / 255;
+      if (f >= 250 && f <= 3000) totalE += mag;
+      if (f >= 250 && f <= 450) nasalE += mag;
+    }
+    return totalE > 0 ? nasalE / totalE : 0;
+  }
+
+  estimatePitch(timeData, sampleRate) {
+    const minLag = Math.floor(sampleRate / 500); // 500Hz max
+    const maxLag = Math.floor(sampleRate / 60);  // 60Hz min
+    const n = Math.min(timeData.length, 2048);
+    let bestCorr = 0, bestLag = 0;
+
+    for (let lag = minLag; lag < Math.min(maxLag, n / 2); lag++) {
+      let corr = 0;
+      for (let i = 0; i < n - lag; i++) {
+        corr += timeData[i] * timeData[i + lag];
+      }
+      corr /= (n - lag);
+      if (corr > bestCorr) { bestCorr = corr; bestLag = lag; }
+    }
+    return bestLag > 0 ? sampleRate / bestLag : 0;
+  }
+
+  // Jitter (period perturbation) and shimmer (amplitude perturbation).
+  // Detects successive glottal cycles by peak-picking around the pitch period,
+  // then measures cycle-to-cycle variation. Returns fractions (0..1).
+  estimatePerturbation(timeData, sampleRate, pitchHz) {
+    if (!pitchHz || pitchHz < 60 || pitchHz > 500) return { jitter: 0, shimmer: 0 };
+    const period = Math.round(sampleRate / pitchHz);
+    if (period < 2) return { jitter: 0, shimmer: 0 };
+    const n = timeData.length;
+    // Anchor on the global maximum, then track successive glottal pulses by
+    // searching a narrow window (±30% of a period) around each expected next
+    // location. This keeps the detector on the fundamental period rather than
+    // jumping onto harmonic sub-peaks.
+    let anchor = 0, anchorV = -Infinity;
+    for (let i = 0; i < n; i++) { if (timeData[i] > anchorV) { anchorV = timeData[i]; anchor = i; } }
+    const tol = Math.max(1, Math.round(period * 0.3));
+    const peaks = [{ idx: anchor, amp: Math.abs(anchorV) }];
+    // Walk forward
+    let expected = anchor + period;
+    while (expected - tol < n) {
+      const lo = Math.max(0, expected - tol);
+      const hi = Math.min(n, expected + tol + 1);
+      if (lo >= hi) break;
+      let bestI = lo, bestV = -Infinity;
+      for (let i = lo; i < hi; i++) { if (timeData[i] > bestV) { bestV = timeData[i]; bestI = i; } }
+      peaks.push({ idx: bestI, amp: Math.abs(bestV) });
+      expected = bestI + period;
+    }
+    // Walk backward from the anchor
+    expected = anchor - period;
+    while (expected + tol >= 0) {
+      const lo = Math.max(0, expected - tol);
+      const hi = Math.min(n, expected + tol + 1);
+      if (lo >= hi) break;
+      let bestI = lo, bestV = -Infinity;
+      for (let i = lo; i < hi; i++) { if (timeData[i] > bestV) { bestV = timeData[i]; bestI = i; } }
+      peaks.unshift({ idx: bestI, amp: Math.abs(bestV) });
+      expected = bestI - period;
+    }
+    if (peaks.length < 3) return { jitter: 0, shimmer: 0 };
+    // Period-to-period intervals and peak amplitudes
+    const periods = [];
+    for (let i = 1; i < peaks.length; i++) periods.push(peaks[i].idx - peaks[i-1].idx);
+    // Jitter (local): mean |Pi - Pi-1| / mean P
+    let sumP = 0; for (let i = 0; i < periods.length; i++) sumP += periods[i];
+    const meanP = sumP / periods.length;
+    if (meanP <= 0) return { jitter: 0, shimmer: 0 };
+    let sumDP = 0; for (let i = 1; i < periods.length; i++) sumDP += Math.abs(periods[i] - periods[i-1]);
+    const jitter = periods.length > 1 ? (sumDP / (periods.length - 1)) / meanP : 0;
+    // Shimmer (local): mean |Ai - Ai-1| / mean A
+    let sumA = 0; for (let i = 0; i < peaks.length; i++) sumA += peaks[i].amp;
+    const meanA = sumA / peaks.length;
+    let sumDA = 0; for (let i = 1; i < peaks.length; i++) sumDA += Math.abs(peaks[i].amp - peaks[i-1].amp);
+    const shimmer = (peaks.length > 1 && meanA > 1e-9) ? (sumDA / (peaks.length - 1)) / meanA : 0;
+    return {
+      jitter: Math.max(0, Math.min(1, jitter)),
+      shimmer: Math.max(0, Math.min(1, shimmer))
+    };
+  }
+
+  match(features) {
+    let bestId = null, bestScore = 0;
+
+    for (const [id, profile] of Object.entries(this.speakers)) {
+      const score = this.compareFeatures(features, profile.avgFeatures);
+      if (score > bestScore) { bestScore = score; bestId = id; }
+    }
+
+    if (bestScore >= this.minConfidence && bestId) {
+      const prof = this.speakers[bestId];
+      prof.detections++;
+      prof.lastSeen = Date.now();
+      this.updateAverage(prof.avgFeatures, features, prof.detections);
+      if (prof.detections % 5 === 0) saveSpeakerLibrary(this);
+      return { id: bestId, name: prof.name, confidence: bestScore, verified: bestScore > 0.80, detections: prof.detections };
+    }
+    return null;
+  }
+
+  enroll(features) {
+    const id = `SPK_${String(this.nextId++).padStart(3, '0')}`;
+    const emb = this.computeEmbedding256(features);
+    this.speakers[id] = {
+      name: `Speaker ${Object.keys(this.speakers).length + 1}`,
+      avgFeatures: { ...features, mfcc: [...features.mfcc] },
+      detections: 1,
+      firstSeen: Date.now(),
+      lastSeen: Date.now(),
+      embedding_256d: Array.from(emb),
+      embedding_model: PROCESSING_META.embedding_model,
+      embedding_model_version: PROCESSING_META.embedding_model_version,
+      embedding_dim: 256,
+      embedding_l2_normalized: true,
+      embedding_created_at: new Date().toISOString()
+    };
+    saveSpeakerLibrary(this);
+    return { id, name: this.speakers[id].name, confidence: 1.0, verified: false, detections: 1 };
+  }
+
+  compareFeatures(a, b) {
+    let score = 0, weights = 0;
+
+    // MFCC similarity (highest weight)
+    if (a.mfcc && b.mfcc) {
+      let mfccSim = 0;
+      for (let i = 0; i < Math.min(a.mfcc.length, b.mfcc.length); i++) {
+        const diff = Math.abs(a.mfcc[i] - b.mfcc[i]);
+        mfccSim += Math.max(0, 1 - diff * 4);
+      }
+      mfccSim /= a.mfcc.length;
+      score += mfccSim * 5; weights += 5;
+    }
+
+    // Spectral centroid
+    const centDiff = Math.abs(a.centroid - b.centroid) / Math.max(a.centroid, b.centroid, 1);
+    score += Math.max(0, 1 - centDiff * 3) * 2; weights += 2;
+
+    // Spectral spread
+    const spreadDiff = Math.abs(a.spread - b.spread) / Math.max(a.spread, b.spread, 1);
+    score += Math.max(0, 1 - spreadDiff * 3) * 1.5; weights += 1.5;
+
+    // Pitch
+    if (a.pitch > 0 && b.pitch > 0) {
+      const pitchRatio = Math.min(a.pitch, b.pitch) / Math.max(a.pitch, b.pitch);
+      score += pitchRatio * 2; weights += 2;
+    }
+
+    // Rolloff
+    const rollDiff = Math.abs(a.rolloff - b.rolloff) / Math.max(a.rolloff, b.rolloff, 1);
+    score += Math.max(0, 1 - rollDiff * 2) * 1; weights += 1;
+
+    // Formants F1/F2/F3 (vocal-tract anatomy — strong speaker discriminators)
+    const formantSim = (fa, fb, tol) => {
+      if (!(fa > 0) || !(fb > 0)) return null;
+      const d = Math.abs(fa - fb) / tol;
+      return Math.max(0, 1 - d);
+    };
+    const f1s = formantSim(a.f1, b.f1, 150); // ~150 Hz tolerance
+    if (f1s !== null) { score += f1s * 3; weights += 3; }
+    const f2s = formantSim(a.f2, b.f2, 300);
+    if (f2s !== null) { score += f2s * 3; weights += 3; }
+    const f3s = formantSim(a.f3, b.f3, 400);
+    if (f3s !== null) { score += f3s * 2; weights += 2; }
+
+    // Nasal formant + nasalance (nasal-cavity anatomy, resonance/anti-resonance)
+    const nfs = formantSim(a.nasalFormant, b.nasalFormant, 120);
+    if (nfs !== null) { score += nfs * 1.5; weights += 1.5; }
+    if (a.nasalance > 0 && b.nasalance > 0) {
+      const nDiff = Math.abs(a.nasalance - b.nasalance);
+      score += Math.max(0, 1 - nDiff * 4) * 1.5; weights += 1.5;
+    }
+
+    return weights > 0 ? score / weights : 0;
+  }
+
+  updateAverage(avg, newF, count) {
+    const alpha = 1 / Math.min(count, 20);
+    avg.centroid = (1-alpha) * avg.centroid + alpha * newF.centroid;
+    avg.spread = (1-alpha) * avg.spread + alpha * newF.spread;
+    avg.flatness = (1-alpha) * avg.flatness + alpha * newF.flatness;
+    avg.rolloff = (1-alpha) * avg.rolloff + alpha * newF.rolloff;
+    avg.pitch = (1-alpha) * avg.pitch + alpha * newF.pitch;
+    avg.zcr = (1-alpha) * avg.zcr + alpha * newF.zcr;
+    // Formants + nasal features: only fold in valid (nonzero) measurements so
+    // silent/unvoiced frames don't drag the running average to zero.
+    const ema = (key) => { if (newF[key] > 0) avg[key] = avg[key] > 0 ? (1-alpha)*avg[key] + alpha*newF[key] : newF[key]; };
+    ema('f1'); ema('f2'); ema('f3'); ema('nasalFormant');
+    avg.f2f1 = avg.f1 > 0 ? avg.f2 / avg.f1 : 0;
+    avg.f3f2 = avg.f2 > 0 ? avg.f3 / avg.f2 : 0;
+    if (newF.nasalance > 0) avg.nasalance = avg.nasalance > 0 ? (1-alpha)*avg.nasalance + alpha*newF.nasalance : newF.nasalance;
+    for (let i = 0; i < avg.mfcc.length; i++) {
+      avg.mfcc[i] = (1-alpha) * avg.mfcc[i] + alpha * (newF.mfcc[i] || 0);
+    }
+  }
+
+  computeEmbedding256(features) {
+    const raw = [];
+    raw.push(features.centroid || 0);
+    raw.push(features.spread || 0);
+    raw.push(features.flatness || 0);
+    raw.push(features.rolloff || 0);
+    if (features.mfcc) for (let i = 0; i < 13; i++) raw.push(features.mfcc[i] || 0);
+    else for (let i = 0; i < 13; i++) raw.push(0);
+    raw.push(features.pitch || 0);
+    raw.push(features.f1 || 0);
+    raw.push(features.f2 || 0);
+    raw.push(features.f3 || 0);
+    raw.push(features.f2f1 || 0);
+    raw.push(features.f3f2 || 0);
+    raw.push(features.nasalFormant || 0);
+    raw.push(features.nasalance || 0);
+    raw.push(features.zcr || 0);
+    const srcDim = raw.length;
+    const nraw = new Float64Array(srcDim);
+    const scales = [
+      200, 50, 1, 500,
+      1,1,1,1,1,1,1,1,1,1,1,1,1,
+      500, 1000, 3000, 4000, 5, 3,
+      500, 1, 0.2
+    ];
+    for (let i = 0; i < srcDim; i++) nraw[i] = raw[i] / (scales[i] || 1);
+    const emb = new Float32Array(256);
+    const PRIMES = [2,3,5,7,11,13,17,19,23,29,31,37,41,43,47,53,59,61,67,71,73,79,83,89];
+    for (let d = 0; d < 256; d++) {
+      let v = 0;
+      const p = PRIMES[d % PRIMES.length];
+      const phase = (d * 0.618033988749895) % (2 * Math.PI);
+      for (let s = 0; s < srcDim; s++) {
+        const freq1 = p * (s + 1) * 0.37;
+        const freq2 = (d + 1) * (s + 1) * 0.73;
+        v += nraw[s] * Math.cos(freq1 + phase);
+        v += nraw[s] * nraw[s] * Math.sin(freq2 + phase * 0.5);
+        if (s + 1 < srcDim) v += nraw[s] * nraw[s+1] * Math.cos(freq1 * 0.5 + freq2);
+      }
+      emb[d] = v;
+    }
+    let norm = 0;
+    for (let i = 0; i < 256; i++) norm += emb[i] * emb[i];
+    norm = Math.sqrt(norm);
+    if (norm > 1e-9) for (let i = 0; i < 256; i++) emb[i] /= norm;
+    return emb;
+  }
+
+  static cosineSimilarity(a, b) {
+    if (!a || !b || a.length !== b.length) return 0;
+    let dot = 0, na = 0, nb = 0;
+    for (let i = 0; i < a.length; i++) {
+      dot += a[i] * b[i];
+      na += a[i] * a[i];
+      nb += b[i] * b[i];
+    }
+    const denom = Math.sqrt(na) * Math.sqrt(nb);
+    return denom > 1e-9 ? dot / denom : 0;
+  }
+}
+
+const fingerprinter = new VoiceFingerprint();
+
+// ============================================================
+// SNR & FIELD ZONE DETECTION
+// ============================================================
+
+let noiseFloorEstimate = 0.002;
+let noiseFrameCount = 0;
+
+function estimateSNR(timeData) {
+  const frameSize = 256;
+  const numFrames = Math.floor(timeData.length / frameSize);
+  if (numFrames < 3) return { snr: 0, rms: 0, peak: 0, hasVoice: false, voiceConf: 0 };
+
+  const frameEnergies = [];
+  for (let f = 0; f < numFrames; f++) {
+    let e = 0;
+    for (let i = 0; i < frameSize; i++) {
+      const s = timeData[f * frameSize + i];
+      e += s * s;
+    }
+    frameEnergies.push(Math.sqrt(e / frameSize));
+  }
+
+  frameEnergies.sort((a, b) => a - b);
+  const noiseFrames = Math.max(1, Math.floor(numFrames * 0.1));
+  let noiseEst = 0;
+  for (let i = 0; i < noiseFrames; i++) noiseEst += frameEnergies[i];
+  noiseEst /= noiseFrames;
+
+  // Update global noise floor with smoothing
+  noiseFloorEstimate = 0.95 * noiseFloorEstimate + 0.05 * noiseEst;
+
+  const signalFrames = Math.max(1, Math.floor(numFrames * 0.5));
+  let signalEst = 0;
+  for (let i = numFrames - signalFrames; i < numFrames; i++) signalEst += frameEnergies[i];
+  signalEst /= signalFrames;
+
+  const rms = signalEst;
+  let peak = 0;
+  for (let i = 0; i < timeData.length; i++) { const a = Math.abs(timeData[i]); if (a > peak) peak = a; }
+
+  const snr = noiseFloorEstimate > 1e-8 ? 20 * Math.log10(signalEst / noiseFloorEstimate) : 60;
+  const snrClamped = Math.max(0, Math.min(60, snr));
+
+  const energyConf = Math.min(1, rms * 15);
+  const snrConf = Math.min(1, snrClamped / 35);
+  const voiceConf = (energyConf + snrConf) / 2;
+  const hasVoice = rms > 0.008 && snrClamped > 6;
+
+  return { snr: snrClamped, rms, peak, hasVoice, voiceConf };
+}
+
+function getFieldZone(snr) {
+  if (snr >= 35) return { name: 'NEAR', dist: '0-1m', cls: 'zone-near' };
+  if (snr >= 25) return { name: 'MEDIUM', dist: '1-3m', cls: 'zone-medium' };
+  if (snr >= 15) return { name: 'FAR', dist: '3-6m', cls: 'zone-far' };
+  if (snr >= 6)  return { name: 'ULTRA-FAR', dist: '6m+', cls: 'zone-ultra' };
+  if (snr >= 2)  return { name: 'EXTREME', dist: 'very far', cls: 'zone-ultra' };
+  return { name: 'WHISPER', dist: 'faint', cls: 'zone-ultra' };
+}
+
+// ============================================================
+// QUALITY CONTROL — per-detection signal quality metrics
+// ============================================================
+
+var recentSpeakerTimes = [];
+
+function computeQualityMetrics(timeData, sampleRate, snrResult, features, speakerId) {
+  const N = timeData.length;
+
+  const clippingSamples = (() => {
+    let c = 0;
+    for (let i = 0; i < N; i++) if (Math.abs(timeData[i]) >= 0.999) c++;
+    return c;
+  })();
+  const clippingPct = N > 0 ? clippingSamples / N : 0;
+
+  const speechSec = N / sampleRate;
+
+  const voicedFrames = (() => {
+    const frameLen = 256;
+    const numFrames = Math.floor(N / frameLen);
+    let voiced = 0;
+    for (let f = 0; f < numFrames; f++) {
+      const off = f * frameLen;
+      let zcr = 0;
+      for (let i = 1; i < frameLen && (off + i) < N; i++) {
+        if ((timeData[off+i] >= 0 && timeData[off+i-1] < 0) || (timeData[off+i] < 0 && timeData[off+i-1] >= 0)) zcr++;
+      }
+      const zcrRate = zcr / frameLen;
+      let energy = 0;
+      for (let i = 0; i < frameLen && (off + i) < N; i++) energy += timeData[off+i] * timeData[off+i];
+      energy = Math.sqrt(energy / frameLen);
+      if (zcrRate < 0.15 && energy > 0.005) voiced++;
+    }
+    return numFrames > 0 ? voiced / numFrames : 0;
+  })();
+
+  const now = Date.now();
+  recentSpeakerTimes.push({ id: speakerId, time: now });
+  recentSpeakerTimes = recentSpeakerTimes.filter(e => now - e.time < 1000);
+  const distinctIds = new Set(recentSpeakerTimes.map(e => e.id).filter(Boolean));
+  const overlapDetected = distinctIds.size > 1;
+
+  const reverbFlag = (() => {
+    const tail = Math.floor(N * 0.8);
+    let tailEnergy = 0, headEnergy = 0;
+    const headEnd = Math.floor(N * 0.3);
+    for (let i = 0; i < headEnd; i++) headEnergy += timeData[i] * timeData[i];
+    for (let i = tail; i < N; i++) tailEnergy += timeData[i] * timeData[i];
+    headEnergy /= Math.max(1, headEnd);
+    tailEnergy /= Math.max(1, N - tail);
+    return headEnergy > 1e-9 ? (tailEnergy / headEnergy) > 0.35 : false;
+  })();
+
+  const snrScore = Math.min(1, snrResult.snr / 40);
+  const voicedScore = voicedFrames;
+  const clipScore = 1 - Math.min(1, clippingPct * 100);
+  const overlapScore = overlapDetected ? 0.3 : 1;
+  const qualityScore = (snrScore * 0.35 + voicedScore * 0.30 + clipScore * 0.20 + overlapScore * 0.15);
+
+  return {
+    snr_db: snrResult.snr,
+    speech_seconds: parseFloat(speechSec.toFixed(3)),
+    voiced_fraction: parseFloat(voicedFrames.toFixed(3)),
+    clipping_pct: parseFloat(clippingPct.toFixed(5)),
+    overlap_detected: overlapDetected,
+    reverb_flag: reverbFlag,
+    gps_accuracy_m: currentLocation ? currentLocation.accuracy : null,
+    quality_score: parseFloat(qualityScore.toFixed(3))
+  };
+}
+
+// ============================================================
+// AMBIENT / BACKGROUND ACOUSTIC DISSECTION
+// Runs every cycle (voice OR silence) to characterize the environment.
+// ============================================================
+
+function analyzeAmbient(freqData, timeData, sampleRate) {
+  const nBins = freqData.length;
+  const nyquist = sampleRate / 2;
+  const binHz = nyquist / nBins;
+
+  // Broadband RMS -> noise floor in dB
+  let sumSq = 0;
+  for (let i = 0; i < timeData.length; i++) sumSq += timeData[i] * timeData[i];
+  const rms = Math.sqrt(sumSq / timeData.length);
+  const floorDb = Math.max(-90, 20 * Math.log10(Math.max(rms, 1e-9)));
+
+  // Band energy DENSITY (per-bin average) so wide bands don't dominate the mix
+  const bandAvg = (loHz, hiHz) => {
+    let s = 0, c = 0;
+    for (let i = 1; i < nBins; i++) {
+      const f = i * binHz;
+      if (f >= loHz && f < hiHz) { s += freqData[i] / 255; c++; }
+    }
+    return c > 0 ? s / c : 0;
+  };
+  const dRumble = bandAvg(20, 120), dLow = bandAvg(120, 300), dMid = bandAvg(300, 2000),
+        dHigh = bandAvg(2000, 5000), dHiss = bandAvg(5000, nyquist);
+  const dTotal = dRumble + dLow + dMid + dHigh + dHiss;
+  const norm = (x) => dTotal > 0 ? x / dTotal : 0;
+
+  // Dominant frequency (strongest single bin)
+  let peakBin = 0, peakMag = 0;
+  for (let i = 1; i < nBins; i++) { const m = freqData[i] / 255; if (m > peakMag) { peakMag = m; peakBin = i; } }
+  const dominantHz = peakBin * binHz;
+
+  // Electrical-hum prominence: each harmonic (searched in a ±2-bin window to
+  // tolerate FFT bin misalignment/leakage) must stand sharply above its CLOSE
+  // background (±3..6 bins). Broadband/traffic energy fails this; only narrow
+  // mains tones pass. Score = the weakest harmonic's prominence.
+  const humProm = (base) => {
+    let minRatio = Infinity;
+    for (let k = 1; k <= 3; k++) {
+      const center = Math.round((base * k) / binHz);
+      if (center <= 0 || center >= nBins) { minRatio = 0; break; }
+      let peak = 0;
+      for (let w = -2; w <= 2; w++) { const bi = center + w; if (bi > 0 && bi < nBins) peak = Math.max(peak, freqData[bi] / 255); }
+      let bg = 0, bc = 0;
+      for (let off = 3; off <= 6; off++) {
+        if (center - off > 0) { bg += freqData[center - off] / 255; bc++; }
+        if (center + off < nBins) { bg += freqData[center + off] / 255; bc++; }
+      }
+      bg = bc > 0 ? bg / bc : 1e-6;
+      minRatio = Math.min(minRatio, peak / Math.max(bg, 1e-6));
+    }
+    return isFinite(minRatio) ? minRatio : 0;
+  };
+  const p50 = humProm(50), p60 = humProm(60);
+  const humProminence = Math.max(p50, p60);
+  const humFreq = p60 >= p50 ? 60 : 50;
+  const humLevel = Math.min(1, Math.max(0, (humProminence - 2) / 5)); // 0 at 2x, ~1 at 7x
+
+  // Spectral flatness -> tonal (low) vs broadband (high)
+  let geo = 0, arith = 0, cnt = 0;
+  for (let i = 1; i < nBins; i++) {
+    const mag = Math.max(freqData[i] / 255, 1e-10);
+    geo += Math.log(mag); arith += mag; cnt++;
+  }
+  const flatness = arith > 0 ? Math.exp(geo / cnt) / (arith / cnt) : 0;
+
+  // Heuristic classification of the background environment
+  let label = 'Mixed Ambient';
+  if (rms < 0.004) label = 'Quiet / Still';
+  else if (humProminence > 4) label = humFreq + 'Hz Electrical Hum';
+  else if (norm(dRumble) > 0.34) label = 'Low Rumble / Traffic';
+  else if (flatness > 0.55) label = 'Broadband Noise';
+  else if (norm(dHiss) > 0.34 || norm(dHigh) > 0.40) label = 'Hiss / HVAC / Wind';
+  else if (norm(dMid) > 0.40) label = 'Mid-band Activity / Voices';
+
+  return {
+    floorDb: floorDb,
+    dominantHz: dominantHz,
+    humLevel: humLevel,
+    humFreq: humFreq,
+    humProminence: humProminence,
+    flatness: flatness,
+    bands: { rumble: norm(dRumble), low: norm(dLow), mid: norm(dMid), high: norm(dHigh), hiss: norm(dHiss) },
+    label: label
+  };
+}
+
+function updateAmbientDisplay(amb) {
+  const el = $('ambientPanel');
+  if (!el) return;
+  el.style.display = 'block';
+  const b = amb.bands;
+  const bar = (v, color) => `<div style="flex:1;height:100%;background:${color};opacity:${0.25 + v*0.75}" title="${(v*100).toFixed(0)}%"></div>`;
+  el.innerHTML =
+    `<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px">
+       <span style="font-weight:700;color:var(--accent-amber)">AMBIENT: ${amb.label}</span>
+       <span style="color:var(--text-dim)">${amb.floorDb.toFixed(0)}dB floor</span>
+     </div>
+     <div style="display:flex;gap:2px;height:14px;border-radius:3px;overflow:hidden;margin-bottom:3px">
+       ${bar(b.rumble,'#EF4444')}${bar(b.low,'#F59E0B')}${bar(b.mid,'#10B981')}${bar(b.high,'#38BDF8')}${bar(b.hiss,'#A78BFA')}
+     </div>
+     <div style="display:flex;justify-content:space-between;color:var(--text-dim);font-size:9px">
+       <span>Peak ${amb.dominantHz.toFixed(0)}Hz</span>
+       <span>Hum ${(amb.humLevel*100).toFixed(0)}%@${amb.humFreq}Hz</span>
+       <span>Flat ${(amb.flatness*100).toFixed(0)}%</span>
+     </div>`;
+}
+
+// ============================================================
+// SPEECH RECOGNITION (Web Speech API)
+// ============================================================
+
+let recognition = null;
+let lastTranscript = '';
+let transcriptQueue = [];
+
+function startSpeechRecognition() {
+  if (!('webkitSpeechRecognition' in window) && !('SpeechRecognition' in window)) return;
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  recognition = new SR();
+  recognition.continuous = true;
+  recognition.interimResults = true;
+  recognition.maxAlternatives = 1;
+
+  if (settings.bilingual) {
+    recognition.lang = 'en-US';
+  } else {
+    recognition.lang = 'en-US';
+  }
+
+  recognition.onresult = (event) => {
+    for (let i = event.resultIndex; i < event.results.length; i++) {
+      if (event.results[i].isFinal) {
+        const t = event.results[i][0].transcript.trim();
+        if (t) transcriptQueue.push(t);
+      }
+    }
+  };
+
+  recognition.onerror = (e) => {
+    if (e.error !== 'no-speech' && e.error !== 'aborted') {
+      setTimeout(() => { if (isScanning && settings.transcription) startSpeechRecognition(); }, 1000);
+    }
+  };
+
+  recognition.onend = () => {
+    if (isScanning && settings.transcription) {
+      setTimeout(() => { try { recognition.start(); } catch(e){} }, 200);
+    }
+  };
+
+  try { recognition.start(); } catch(e) {}
+}
+
+// ============================================================
+// AUDIO ENGINE
+// ============================================================
+
+const processorCode = `
+class ScanProcessor extends AudioWorkletProcessor {
+  constructor() {
+    super();
+    this.settings = { noiseReduction: true, dynamicRange: true, agcBypass: false, gain: 1.0 };
+    this.dcPrev = 0; this.dcPrevIn = 0; this.agcGain = 1.0; this.nf = 0.001;
+    this.port.onmessage = (e) => { this.settings = { ...this.settings, ...e.data }; };
+  }
+  process(inputs, outputs) {
+    const input = inputs[0]; const output = outputs[0];
+    if (!input || !input[0]) return true;
+    const inCh = input[0]; const outCh = output[0];
+    const s = this.settings;
+    for (let i = 0; i < inCh.length; i++) {
+      let v = inCh[i] * s.gain;
+      // DC removal
+      const hp = 0.995 * (this.dcPrev + v - this.dcPrevIn);
+      this.dcPrevIn = v; this.dcPrev = hp; v = hp;
+      // Noise gate
+      if (s.noiseReduction) {
+        const abs = Math.abs(v);
+        this.nf = 0.9995 * this.nf + 0.0005 * Math.min(abs, this.nf * 2);
+        const thresh = this.nf * 3.5;
+        if (abs < thresh) v *= abs / thresh;
+      }
+      // DRC
+      if (s.dynamicRange && !s.agcBypass) {
+        const abs = Math.abs(v);
+        const dg = Math.min(15, Math.max(0.1, 0.12 / Math.max(abs, 0.001)));
+        this.agcGain = 0.997 * this.agcGain + 0.003 * dg;
+        v *= this.agcGain;
+        if (Math.abs(v) > 0.7) v = Math.sign(v) * (0.7 + (Math.abs(v)-0.7)/4);
+      }
+      // Anti-clip
+      if (Math.abs(v) > 0.95) v = Math.sign(v) * (0.95 + 0.05 * Math.tanh((Math.abs(v)-0.95)/0.05));
+      outCh[i] = v;
+    }
+    return true;
+  }
+}
+registerProcessor('scan-processor', ScanProcessor);
+`;
+
+async function startScanning() {
+  dbg('startScanning() called');
+  try {
+    dbg('Creating AudioContext...');
+    ctx = new AudioCtx();
+    dbg('AudioContext created, state: ' + ctx.state + ', rate: ' + ctx.sampleRate);
+
+    if (ctx.state === 'suspended') {
+      dbg('Resuming suspended AudioContext...');
+      await ctx.resume();
+      dbg('AudioContext resumed, state: ' + ctx.state);
+    }
+
+    dbg('Requesting microphone...');
+    stream = await navigator.mediaDevices.getUserMedia({
+      audio: {
+        echoCancellation: !settings.agcBypass,
+        noiseSuppression: !settings.agcBypass,
+        autoGainControl: !settings.agcBypass,
+        channelCount: 1
+      }
+    });
+    dbg('Microphone granted, tracks: ' + stream.getAudioTracks().length);
+
+    source = ctx.createMediaStreamSource(stream);
+    analyser = ctx.createAnalyser();
+    analyser.fftSize = 4096;
+    analyser.smoothingTimeConstant = 0.7;
+
+    // Audio processing via AudioWorklet (or fallback)
+    try {
+      dbg('Trying AudioWorklet...');
+      var blob = new Blob([processorCode], { type: 'application/javascript' });
+      var url = URL.createObjectURL(blob);
+      await ctx.audioWorklet.addModule(url);
+      URL.revokeObjectURL(url);
+      processorNode = new AudioWorkletNode(ctx, 'scan-processor');
+      processorNode.port.postMessage(settings);
+      source.connect(processorNode);
+      processorNode.connect(analyser);
+      dbg('AudioWorklet DSP active');
+    } catch(e) {
+      dbg('AudioWorklet failed: ' + e.message + ' - using direct connection');
+      source.connect(analyser);
+    }
+
+    PROCESSING_META.capture_sample_rate = ctx.sampleRate;
+    PROCESSING_META.analysis_window_sec = analyser.frequencyBinCount / ctx.sampleRate;
+
+    initPcmRingBuffer(ctx.sampleRate);
+    speakerAudioClips = {};
+    _speakerClipCooldowns = {};
+
+    isScanning = true;
+    scanStartTime = Date.now();
+    sessionStartFull = new Date();
+    updateMainUI();
+    resizeCanvases();
+
+    // Show session header with full date/time/seconds
+    var sessEl = $('sessionHeader');
+    if (sessEl) {
+      sessEl.style.display = 'block';
+      $('sessionDateTime').textContent = sessionStartFull.toLocaleDateString('en-US', {weekday:'short', year:'numeric', month:'short', day:'numeric'}) + ' ' + sessionStartFull.toLocaleTimeString('en-US', {hour12:false, hour:'2-digit', minute:'2-digit', second:'2-digit'});
+    }
+    saveSessionStart(sessionStartFull.toISOString());
+
+    // Request geolocation
+    requestGeoLocation();
+
+    // Raw-audio evidence capture (continuous session recording)
+    if (settings.recordAudio) startEvidenceRecorder(stream);
+
+    if (settings.transcription) {
+      dbg('Starting speech recognition...');
+      startSpeechRecognition();
+    }
+
+    scanLoop();
+    $('headerMeta').textContent = (ctx.sampleRate/1000).toFixed(0) + 'kHz SCANNING';
+    dbg('SCANNING ACTIVE');
+  } catch(e) {
+    dbg('FATAL: ' + e.name + ': ' + e.message);
+    $('headerMeta').textContent = 'ERROR: ' + e.message;
+  }
+}
+
+async function stopScanning() {
+  isScanning = false;
+  if (recognition) { try { recognition.abort(); } catch(e){} recognition = null; }
+  var hadRecorder = mediaRecorder && mediaRecorder.state !== 'inactive';
+  var recorderDone = hadRecorder ? Promise.race([
+    new Promise(function(resolve) { _onEvidenceFinalized = resolve; }),
+    new Promise(function(resolve) { setTimeout(resolve, 8000); }) // safety: never hang the stop flow
+  ]) : Promise.resolve();
+  stopEvidenceRecorder();
+  if (stream) stream.getTracks().forEach(t => t.stop());
+  if (ctx) ctx.close();
+  if (animFrame) cancelAnimationFrame(animFrame);
+  stream = null; ctx = null; source = null; analyser = null; processorNode = null;
+  pcmRingBuffer = null; pcmWritePos = 0;
+  if (geoWatchId !== null) { navigator.geolocation.clearWatch(geoWatchId); geoWatchId = null; }
+  updateMainUI();
+  $('headerMeta').textContent = 'STOPPED';
+  saveDetectionLog();
+  saveSpeakerLibrary(fingerprinter);
+  updateStorageInfo();
+  dbg('Data saved to device storage');
+  var hasData = detectionLog.length > 0 || (fingerprinter && Object.keys(fingerprinter.speakers).length > 0);
+  if (hasData) {
+    $('headerMeta').textContent = 'PACKAGING EVIDENCE…';
+    if (hadRecorder) { dbg('Waiting for audio evidence to finalize…'); await recorderDone; }
+    await handleDownloadAll();
+    $('headerMeta').textContent = 'STOPPED — ZIP DOWNLOADED';
+    dbg('Evidence ZIP auto-downloaded on stop');
+  }
+}
+
+// ============================================================
+// RAW-AUDIO EVIDENCE CAPTURE (continuous session recording)
+// ============================================================
+
+var mediaRecorder = null;
+var recordedChunks = [];
+var evidenceClip = null; // { blob, url, mime, bytes, started, ended, sha256 }
+var _onEvidenceFinalized = null;
+
+function pickAudioMime() {
+  if (typeof MediaRecorder === 'undefined' || !MediaRecorder.isTypeSupported) return '';
+  var candidates = ['audio/mp4', 'audio/webm;codecs=opus', 'audio/webm', 'audio/aac', 'audio/ogg'];
+  for (var i = 0; i < candidates.length; i++) if (MediaRecorder.isTypeSupported(candidates[i])) return candidates[i];
+  return '';
+}
+
+function startEvidenceRecorder(srcStream) {
+  if (typeof MediaRecorder === 'undefined') { dbg('MediaRecorder not supported — audio capture off'); return; }
+  try {
+    var mime = pickAudioMime();
+    recordedChunks = [];
+    mediaRecorder = mime ? new MediaRecorder(srcStream, { mimeType: mime }) : new MediaRecorder(srcStream);
+    mediaRecorder.ondataavailable = function(e) { if (e.data && e.data.size > 0) recordedChunks.push(e.data); };
+    mediaRecorder.onstop = finalizeEvidenceClip;
+    mediaRecorder.onerror = function(e) { dbg('Recorder error: ' + (e.error ? e.error.name : 'unknown')); };
+    mediaRecorder.start(1000); // gather in 1s chunks
+    dbg('Evidence recorder started (' + (mime || 'default') + ')');
+  } catch (e) { dbg('Recorder start failed: ' + e.message); mediaRecorder = null; }
+}
+
+function stopEvidenceRecorder() {
+  if (mediaRecorder && mediaRecorder.state !== 'inactive') {
+    try { mediaRecorder.stop(); } catch (e) { dbg('Recorder stop failed: ' + e.message); }
+  }
+}
+
+async function finalizeEvidenceClip() {
+  try {
+    if (recordedChunks.length === 0) { dbg('No audio captured'); return; }
+    var mime = (mediaRecorder && mediaRecorder.mimeType) || recordedChunks[0].type || 'audio/webm';
+    var blob = new Blob(recordedChunks, { type: mime });
+    var hash = null;
+    try { var buf = await blob.arrayBuffer(); hash = await sha256HexBytes(new Uint8Array(buf)); }
+    catch (e) { dbg('Audio hash failed: ' + e.message); }
+    if (evidenceClip && evidenceClip.url) URL.revokeObjectURL(evidenceClip.url);
+    evidenceClip = {
+      blob: blob, url: URL.createObjectURL(blob), mime: mime, bytes: blob.size,
+      started: sessionStartFull ? sessionStartFull.toISOString() : null,
+      ended: new Date().toISOString(), sha256: hash
+    };
+    recordedChunks = [];
+    var kb = (blob.size / 1024).toFixed(0);
+    dbg('Evidence clip ready: ' + kb + 'KB ' + mime + ' (SHA-256 ' + (hash ? hash.slice(0, 12) + '…' : 'n/a') + ')');
+    updateEvidenceButton();
+  } finally {
+    // Always resolve the stop-scan wait, even if no audio was captured, so the ZIP still builds
+    if (_onEvidenceFinalized) { var cb = _onEvidenceFinalized; _onEvidenceFinalized = null; cb(); }
+  }
+}
+
+function updateEvidenceButton() {
+  var btn = $('downloadAudioBtn');
+  if (!btn) return;
+  if (evidenceClip) {
+    btn.style.display = '';
+    btn.textContent = 'DOWNLOAD AUDIO (' + (evidenceClip.bytes / 1024).toFixed(0) + 'KB)';
+  } else {
+    btn.style.display = 'none';
+  }
+}
+
+function handleDownloadAudio() {
+  if (!evidenceClip) { dbg('No evidence audio yet — scan a session first'); return; }
+  var ext = evidenceClip.mime.indexOf('mp4') >= 0 ? 'm4a' : evidenceClip.mime.indexOf('ogg') >= 0 ? 'ogg' : evidenceClip.mime.indexOf('webm') >= 0 ? 'webm' : 'audio';
+  var a = document.createElement('a');
+  a.href = evidenceClip.url;
+  a.download = 'voice_forensics_audio_' + formatFileDate() + '.' + ext;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  dbg('Downloaded evidence audio (' + (evidenceClip.bytes / 1024).toFixed(0) + 'KB)');
+}
+
+// ============================================================
+// PER-SPEAKER AUDIO CAPTURE
+// ============================================================
+
+function initPcmRingBuffer(sampleRate) {
+  var bufSeconds = 10;
+  pcmBufferSamples = sampleRate * bufSeconds;
+  pcmRingBuffer = new Float32Array(pcmBufferSamples);
+  pcmWritePos = 0;
+}
+
+function feedPcmRing(samples) {
+  if (!pcmRingBuffer) return;
+  var remaining = samples.length;
+  var srcOffset = 0;
+  while (remaining > 0) {
+    var space = pcmBufferSamples - pcmWritePos;
+    var chunk = Math.min(remaining, space);
+    pcmRingBuffer.set(samples.subarray(srcOffset, srcOffset + chunk), pcmWritePos);
+    pcmWritePos = (pcmWritePos + chunk) % pcmBufferSamples;
+    srcOffset += chunk;
+    remaining -= chunk;
+  }
+}
+
+function slicePcmClip(sampleRate) {
+  if (!pcmRingBuffer) return null;
+  var clipSamples = Math.min(sampleRate * PCM_CLIP_SECONDS, pcmBufferSamples);
+  var clip = new Float32Array(clipSamples);
+  var readPos = (pcmWritePos - clipSamples + pcmBufferSamples) % pcmBufferSamples;
+  for (var i = 0; i < clipSamples; i++) {
+    clip[i] = pcmRingBuffer[(readPos + i) % pcmBufferSamples];
+  }
+  return clip;
+}
+
+var _speakerClipCooldowns = {};
+function captureSpeakerClip(speakerId, sampleRate) {
+  var now = Date.now();
+  var cooldownMs = PCM_CLIP_SECONDS * 1000;
+  if (_speakerClipCooldowns[speakerId] && now - _speakerClipCooldowns[speakerId] < cooldownMs) return;
+  _speakerClipCooldowns[speakerId] = now;
+  var clip = slicePcmClip(sampleRate);
+  if (!clip) return;
+  if (!speakerAudioClips[speakerId]) speakerAudioClips[speakerId] = [];
+  var arr = speakerAudioClips[speakerId];
+  if (arr.length >= PCM_MAX_CLIPS_PER_SPEAKER) arr.shift();
+  arr.push({ pcm: clip, timestamp: now, sampleRate: sampleRate });
+}
+
+function buildWav(pcm, sampleRate) {
+  var numSamples = pcm.length;
+  var buffer = new ArrayBuffer(44 + numSamples * 2);
+  var view = new DataView(buffer);
+  function writeStr(o, s) { for (var i = 0; i < s.length; i++) view.setUint8(o + i, s.charCodeAt(i)); }
+  writeStr(0, 'RIFF');
+  view.setUint32(4, 36 + numSamples * 2, true);
+  writeStr(8, 'WAVE');
+  writeStr(12, 'fmt ');
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true);
+  view.setUint16(22, 1, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, sampleRate * 2, true);
+  view.setUint16(32, 2, true);
+  view.setUint16(34, 16, true);
+  writeStr(36, 'data');
+  view.setUint32(40, numSamples * 2, true);
+  for (var i = 0; i < numSamples; i++) {
+    var s = Math.max(-1, Math.min(1, pcm[i]));
+    view.setInt16(44 + i * 2, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+  }
+  return new Uint8Array(buffer);
+}
+
+function buildSpeakerCombinedWav(speakerId) {
+  var clips = speakerAudioClips[speakerId];
+  if (!clips || clips.length === 0) return null;
+  var sr = clips[0].sampleRate;
+  var totalSamples = 0;
+  for (var i = 0; i < clips.length; i++) totalSamples += clips[i].pcm.length;
+  var combined = new Float32Array(totalSamples);
+  var offset = 0;
+  for (var i = 0; i < clips.length; i++) {
+    combined.set(clips[i].pcm, offset);
+    offset += clips[i].pcm.length;
+  }
+  return { wav: buildWav(combined, sr), clips: clips.length, seconds: Math.round(totalSamples / sr * 10) / 10 };
+}
+
+// ============================================================
+// MAIN SCAN LOOP (runs every ~100ms)
+// ============================================================
+
+let lastScanTime = 0;
+const SCAN_INTERVAL = 150; // ms between scans
+
+function scanLoop() {
+  if (!isScanning || !analyser) return;
+  animFrame = requestAnimationFrame(scanLoop);
+
+  const now = Date.now();
+  if (now - lastScanTime < SCAN_INTERVAL) { drawViz(); return; }
+  lastScanTime = now;
+
+  const bufLen = analyser.frequencyBinCount;
+  const timeData = new Float32Array(bufLen);
+  const freqData = new Uint8Array(bufLen);
+  analyser.getFloatTimeDomainData(timeData);
+  analyser.getByteFrequencyData(freqData);
+
+  // Feed PCM ring buffer for per-speaker audio capture
+  feedPcmRing(timeData);
+
+  // SNR & Voice detection
+  const snrResult = estimateSNR(timeData);
+  const zone = getFieldZone(snrResult.snr);
+
+  // Update meters
+  $('mSnr').textContent = snrResult.snr.toFixed(0);
+  $('mSnrFill').style.width = Math.min(100, snrResult.snr / 50 * 100) + '%';
+  $('mZone').textContent = zone.name;
+  $('mZone').style.fontSize = zone.name.length > 5 ? '11px' : '15px';
+  $('mVoice').textContent = (snrResult.voiceConf * 100).toFixed(0);
+  $('mVoiceFill').style.width = (snrResult.voiceConf * 100) + '%';
+
+  // Energy history
+  energyHistory.push(snrResult.rms);
+  if (energyHistory.length > 60) energyHistory.shift();
+
+  scanStats.totalDetections++;
+  $('statTotal').textContent = scanStats.totalDetections;
+  $('statDuration').textContent = Math.floor((now - scanStartTime) / 1000) + 's';
+
+  // Ambient/background dissection — runs every cycle regardless of voice
+  const ambient = analyzeAmbient(freqData, timeData, ctx.sampleRate);
+  lastAmbient = ambient;
+  updateAmbientDisplay(ambient);
+
+  // Voice detected - run full analysis
+  if (snrResult.hasVoice) {
+    scanStats.voiceSegments++;
+    $('statVoice').textContent = scanStats.voiceSegments;
+
+    // Speaker fingerprinting
+    let speakerResult = null;
+    let detectionFeatures = null;
+    let detectionEmbedding = null;
+    if (settings.fingerprint) {
+      detectionFeatures = fingerprinter.extractFeatures(freqData, timeData, ctx.sampleRate);
+      detectionEmbedding = fingerprinter.computeEmbedding256(detectionFeatures);
+      speakerResult = fingerprinter.match(detectionFeatures);
+      if (!speakerResult && settings.autoEnroll) {
+        speakerResult = fingerprinter.enroll(detectionFeatures);
+      }
+      if (speakerResult && detectionEmbedding) {
+        const spk = fingerprinter.speakers[speakerResult.id];
+        if (spk) {
+          if (!spk.embedding_256d) {
+            spk.embedding_256d = Array.from(detectionEmbedding);
+          } else {
+            const alpha = 1 / Math.min(spk.detections, 20);
+            for (let i = 0; i < 256; i++) {
+              spk.embedding_256d[i] = (1 - alpha) * spk.embedding_256d[i] + alpha * detectionEmbedding[i];
+            }
+            let n2 = 0;
+            for (let i = 0; i < 256; i++) n2 += spk.embedding_256d[i] * spk.embedding_256d[i];
+            n2 = Math.sqrt(n2);
+            if (n2 > 1e-9) for (let i = 0; i < 256; i++) spk.embedding_256d[i] /= n2;
+          }
+          spk.embedding_model = PROCESSING_META.embedding_model;
+          spk.embedding_model_version = PROCESSING_META.embedding_model_version;
+          spk.embedding_dim = 256;
+          spk.embedding_l2_normalized = true;
+          if (!spk.embedding_created_at) spk.embedding_created_at = new Date().toISOString();
+        }
+      }
+    }
+
+    if (speakerResult) {
+      scanStats.uniqueSpeakers.add(speakerResult.id);
+      $('mSpkrs').textContent = scanStats.uniqueSpeakers.size;
+      $('mSpkrFill').style.width = Math.min(100, scanStats.uniqueSpeakers.size * 20) + '%';
+      $('statSpeakers').textContent = scanStats.uniqueSpeakers.size;
+
+      // Capture per-speaker audio clip
+      captureSpeakerClip(speakerResult.id, ctx.sampleRate);
+
+      // Update speaker in DB display
+      updateSpeakerList(speakerResult);
+    }
+
+    // Quality-control metrics for this detection
+    const qc = computeQualityMetrics(timeData, ctx.sampleRate, snrResult, detectionFeatures, speakerResult ? speakerResult.id : null);
+
+    // Get transcript if available
+    let transcript = transcriptQueue.shift() || '';
+
+    // Add detection entry
+    const prof = speakerResult ? fingerprinter.speakers[speakerResult.id]?.avgFeatures : null;
+    addDetectionEntry({
+      time: new Date(),
+      speaker: speakerResult,
+      snr: snrResult.snr,
+      zone: zone,
+      voiceConf: snrResult.voiceConf,
+      rms: snrResult.rms,
+      peak: snrResult.peak,
+      transcript: transcript,
+      pitch: prof ? prof.pitch : 0,
+      f1: prof ? prof.f1 : 0,
+      f2: prof ? prof.f2 : 0,
+      f3: prof ? prof.f3 : 0,
+      nasalFormant: prof ? prof.nasalFormant : 0,
+      nasalance: prof ? prof.nasalance : 0,
+      jitter: detectionFeatures ? (detectionFeatures.jitter || 0) : 0,
+      shimmer: detectionFeatures ? (detectionFeatures.shimmer || 0) : 0,
+      ambient: ambient,
+      location: currentLocation ? { lat: currentLocation.lat, lng: currentLocation.lng, accuracy: currentLocation.accuracy } : null,
+      quality: qc,
+      embedding_256d: detectionEmbedding ? Array.from(detectionEmbedding) : null
+    });
+  }
+
+  drawViz();
+}
+
+// ============================================================
+// DETECTION FEED
+// ============================================================
+
+function addDetectionEntry(det) {
+  // Save to persistent log
+  var logEntry = {
+    timestamp: det.time.getTime(),
+    speakerId: det.speaker ? det.speaker.id : null,
+    speakerName: det.speaker ? det.speaker.name : null,
+    confidence: det.speaker ? det.speaker.confidence : 0,
+    verified: det.speaker ? det.speaker.verified : false,
+    snr: det.snr,
+    zone: det.zone.name,
+    distance: det.zone.dist,
+    voiceConf: det.voiceConf,
+    pitch: det.pitch,
+    f1: det.f1 || 0,
+    f2: det.f2 || 0,
+    f3: det.f3 || 0,
+    nasalFormant: det.nasalFormant || 0,
+    nasalance: det.nasalance || 0,
+    jitter: det.jitter || 0,
+    shimmer: det.shimmer || 0,
+    ambientLabel: det.ambient ? det.ambient.label : '',
+    ambientFloorDb: det.ambient ? det.ambient.floorDb : 0,
+    ambientDominantHz: det.ambient ? det.ambient.dominantHz : 0,
+    ambientHum: det.ambient ? det.ambient.humLevel : 0,
+    transcript: det.transcript || '',
+    location: det.location || null,
+    speech_seconds: det.quality ? det.quality.speech_seconds : 0,
+    voiced_fraction: det.quality ? det.quality.voiced_fraction : 0,
+    clipping_pct: det.quality ? det.quality.clipping_pct : 0,
+    overlap_detected: det.quality ? det.quality.overlap_detected : false,
+    reverb_flag: det.quality ? det.quality.reverb_flag : false,
+    quality_score: det.quality ? det.quality.quality_score : 0,
+    embedding_model: det.embedding_256d ? PROCESSING_META.embedding_model : null,
+    embedding_256d: det.embedding_256d || null
+  };
+  detectionLog.push(logEntry);
+  // Cap in-memory log to avoid unbounded growth during long surveillance sessions
+  if (detectionLog.length > 1000) detectionLog = detectionLog.slice(-1000);
+  if (detectionLog.length % 10 === 0) saveDetectionLog();
+
+  const feed = $('scannerFeed');
+  const empty = $('feedEmpty');
+  if (empty) empty.remove();
+
+  const entry = document.createElement('div');
+  entry.className = 'detection-entry';
+
+  const time = det.time.toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  const spkName = det.speaker ? det.speaker.name : 'Unknown';
+  const conf = det.speaker ? (det.speaker.confidence * 100).toFixed(0) : '0';
+
+  let badge = '';
+  if (det.speaker) {
+    if (det.speaker.verified) badge = '<span class="detection-badge badge-verified">VERIFIED</span>';
+    else if (det.speaker.confidence > 0.5) badge = '<span class="detection-badge badge-partial">PARTIAL</span>';
+    else badge = '<span class="detection-badge badge-new">NEW</span>';
+  }
+
+  let html = `
+    <div class="detection-header">
+      <span class="detection-time">${time}</span>
+      <span class="detection-speaker">${spkName}</span>
+      ${badge}
+      <span class="zone-badge ${det.zone.cls}">${det.zone.name}</span>
+    </div>
+    <div class="detection-metrics">
+      <span>SNR: ${det.snr.toFixed(0)}dB</span>
+      <span>Conf: ${conf}%</span>
+      <span>Dist: ${det.zone.dist}</span>
+      ${det.pitch > 0 ? `<span>F0: ${det.pitch.toFixed(0)}Hz</span>` : ''}
+    </div>`;
+
+  if (det.speaker && det.speaker.confidence > 0.5) {
+    let formantLine = '';
+    if (det.f1 > 0) formantLine += `<span>F1:${det.f1.toFixed(0)}</span>`;
+    if (det.f2 > 0) formantLine += `<span>F2:${det.f2.toFixed(0)}</span>`;
+    if (det.f3 > 0) formantLine += `<span>F3:${det.f3.toFixed(0)}</span>`;
+    if (det.nasalFormant > 0) formantLine += `<span>Nasal:${det.nasalFormant.toFixed(0)}Hz</span>`;
+    if (det.nasalance > 0) formantLine += `<span>Nz:${(det.nasalance*100).toFixed(0)}%</span>`;
+    html += `<div class="detection-biometrics">
+      <span>MFCC:${(det.speaker.confidence*100).toFixed(0)}%</span>
+      ${det.speaker.detections > 1 ? `<span>x${det.speaker.detections}</span>` : ''}
+    </div>`;
+    if (formantLine) html += `<div class="detection-biometrics" style="color:var(--accent-purple)">${formantLine}</div>`;
+  }
+
+  if (det.transcript) {
+    html += `<div class="detection-transcript">"${det.transcript}"</div>`;
+  }
+
+  entry.innerHTML = html;
+  feed.insertBefore(entry, feed.firstChild);
+
+  // Keep max 50 entries
+  while (feed.children.length > 50) feed.removeChild(feed.lastChild);
+}
+
+// ============================================================
+// SPEAKER LIST
+// ============================================================
+
+function updateSpeakerList(result) {
+  const list = $('speakerList');
+  const colors = ['#3B82F6','#10B981','#F59E0B','#EF4444','#8B5CF6','#EC4899','#06B6D4','#F97316'];
+
+  let html = '';
+  const sorted = Object.entries(fingerprinter.speakers).sort((a,b) => b[1].detections - a[1].detections);
+
+  for (const [id, prof] of sorted) {
+    const idx = parseInt(id.replace('SPK_','')) - 1;
+    const color = colors[idx % colors.length];
+    const initial = prof.name.charAt(prof.name.length - 1);
+    const lastSeen = prof.lastSeen ? new Date(prof.lastSeen).toLocaleTimeString('en-US', {hour12:false, hour:'2-digit', minute:'2-digit'}) : '--';
+
+    const af = prof.avgFeatures || {};
+    let formantStr = '';
+    if (af.f1 > 0) formantStr += ` | F1:${af.f1.toFixed(0)} F2:${af.f2.toFixed(0)} F3:${af.f3.toFixed(0)}`;
+    if (af.nasalFormant > 0) formantStr += ` | Nasal:${af.nasalFormant.toFixed(0)}Hz`;
+    if (af.nasalance > 0) formantStr += ` (Nz ${(af.nasalance*100).toFixed(0)}%)`;
+
+    html += `<div class="speaker-card">
+      <div class="speaker-avatar" style="background:${color}">${initial}</div>
+      <div class="speaker-info">
+        <div class="speaker-name">${prof.name}</div>
+        <div class="speaker-detail">${prof.detections} detections | F0: ${af.pitch?.toFixed(0) || '?'}Hz | last ${lastSeen}</div>
+        <div class="speaker-detail" style="color:var(--accent-purple);font-size:10px">${formantStr || 'formants pending...'}</div>
+      </div>
+      <div class="speaker-conf" style="color:${color}">${id}</div>
+    </div>`;
+  }
+
+  list.innerHTML = html || '<div class="feed-empty">No speakers detected yet</div>';
+}
+
+// ============================================================
+// VISUALIZATION
+// ============================================================
+
+const waveCanvas = $('waveCanvas');
+const specCanvas = $('specCanvas');
+const energyCanvas = $('energyCanvas');
+
+function resizeCanvases() {
+  const dpr = window.devicePixelRatio || 1;
+  [waveCanvas, specCanvas, energyCanvas].forEach(c => {
+    if (!c) return;
+    const rect = c.getBoundingClientRect();
+    c.width = rect.width * dpr;
+    c.height = rect.height * dpr;
+    c.getContext('2d').scale(dpr, dpr);
+  });
+}
+window.addEventListener('resize', resizeCanvases);
+setTimeout(resizeCanvases, 100);
+
+function drawViz() {
+  if (!analyser) return;
+  const bufLen = analyser.frequencyBinCount;
+  const timeData = new Float32Array(bufLen);
+  const freqData = new Uint8Array(bufLen);
+  analyser.getFloatTimeDomainData(timeData);
+  analyser.getByteFrequencyData(freqData);
+
+  const dpr = window.devicePixelRatio || 1;
+
+  // Waveform
+  if (waveCanvas.offsetParent !== null) {
+    const wCtx = waveCanvas.getContext('2d');
+    const wW = waveCanvas.width / dpr, wH = waveCanvas.height / dpr;
+    wCtx.clearRect(0, 0, wW, wH);
+    wCtx.beginPath();
+    wCtx.strokeStyle = 'rgba(56, 189, 248, 0.85)';
+    wCtx.lineWidth = 1.5;
+    const step = Math.ceil(bufLen / wW);
+    for (let i = 0; i < wW; i++) {
+      const idx = i * step;
+      const y = (0.5 + timeData[idx] * 0.45) * wH;
+      if (i === 0) wCtx.moveTo(0, y); else wCtx.lineTo(i, y);
+    }
+    wCtx.stroke();
+  }
+
+  // Spectrum
+  if (specCanvas.offsetParent !== null) {
+    const sCtx = specCanvas.getContext('2d');
+    const sW = specCanvas.width / dpr, sH = specCanvas.height / dpr;
+    sCtx.clearRect(0, 0, sW, sH);
+    const barCount = 48;
+    const barW = sW / barCount - 1;
+    for (let i = 0; i < barCount; i++) {
+      const idx = Math.floor(Math.pow(i / barCount, 1.3) * bufLen);
+      const v = freqData[idx] / 255;
+      const h = v * sH;
+      sCtx.fillStyle = `hsla(${185 + v * 40}, 75%, ${35 + v * 30}%, ${0.5 + v * 0.5})`;
+      sCtx.fillRect(i * (barW + 1), sH - h, barW, h);
+    }
+  }
+
+  // Energy history
+  if (energyCanvas.offsetParent !== null && energyHistory.length > 1) {
+    const eCtx = energyCanvas.getContext('2d');
+    const eW = energyCanvas.width / dpr, eH = energyCanvas.height / dpr;
+    eCtx.clearRect(0, 0, eW, eH);
+    eCtx.beginPath();
+    eCtx.strokeStyle = 'rgba(16, 185, 129, 0.8)';
+    eCtx.lineWidth = 2;
+    const maxE = Math.max(...energyHistory, 0.01);
+    for (let i = 0; i < energyHistory.length; i++) {
+      const x = (i / (energyHistory.length - 1)) * eW;
+      const y = eH - (energyHistory[i] / maxE) * eH * 0.9;
+      if (i === 0) eCtx.moveTo(x, y); else eCtx.lineTo(x, y);
+    }
+    eCtx.stroke();
+
+    // Threshold line
+    const threshY = eH - (0.008 / maxE) * eH * 0.9;
+    eCtx.setLineDash([4, 4]);
+    eCtx.strokeStyle = 'rgba(239, 68, 68, 0.4)';
+    eCtx.lineWidth = 1;
+    eCtx.beginPath();
+    eCtx.moveTo(0, threshY);
+    eCtx.lineTo(eW, threshY);
+    eCtx.stroke();
+    eCtx.setLineDash([]);
+  }
+
+  // Extra meters (viz tab)
+  if ($('mRms')) {
+    let rms = 0, peak = 0;
+    for (let i = 0; i < timeData.length; i++) {
+      rms += timeData[i]*timeData[i];
+      const a = Math.abs(timeData[i]); if (a > peak) peak = a;
+    }
+    rms = Math.sqrt(rms / timeData.length);
+    const rmsDb = Math.max(-60, 20*Math.log10(Math.max(rms,1e-10)));
+    const peakDb = Math.max(-60, 20*Math.log10(Math.max(peak,1e-10)));
+
+    $('mRms').textContent = rmsDb.toFixed(0);
+    $('mRmsFill').style.width = Math.min(100,(rmsDb+60)/60*100)+'%';
+    $('mPeak').textContent = peakDb.toFixed(0);
+    $('mPeakFill').style.width = Math.min(100,(peakDb+60)/60*100)+'%';
+
+    // Pitch & ZCR from last features
+    const lastSpk = Object.values(fingerprinter.speakers).pop();
+    if (lastSpk) {
+      const p = lastSpk.avgFeatures.pitch;
+      $('mFreq').textContent = p > 0 ? p.toFixed(0) : '--';
+      $('mFreqFill').style.width = p > 0 ? Math.min(100, p/400*100)+'%' : '0%';
+      $('mZcr').textContent = (lastSpk.avgFeatures.zcr * 100).toFixed(0);
+      $('mZcrFill').style.width = Math.min(100, lastSpk.avgFeatures.zcr * 300)+'%';
+    }
+  }
+}
+
+// ============================================================
+// UI CONTROLS (iOS Safari compatible — onclick handlers)
+// ============================================================
+
+function updateMainUI() {
+  var dot = $('statusDot');
+  var btn = $('mainBtn');
+  if (isScanning) {
+    dot.className = 'status-dot scanning';
+    btn.textContent = 'STOP SCANNING';
+    btn.className = 'main-btn btn-stop';
+    btn.setAttribute('onclick', 'handleMainBtn()');
+  } else {
+    dot.className = 'status-dot';
+    btn.textContent = 'START SCANNING';
+    btn.className = 'main-btn btn-start';
+    btn.setAttribute('onclick', 'handleMainBtn()');
+  }
+}
+
+// Global handlers called from onclick attributes
+function handleMainBtn() {
+  dbg('Main button tapped, isScanning=' + isScanning);
+  if (isScanning) { stopScanning(); } else { startScanning(); }
+}
+
+function handleTab(tabEl) {
+  dbg('Tab tapped: ' + tabEl.getAttribute('data-tab'));
+  var tabs = document.querySelectorAll('.tab');
+  var panels = document.querySelectorAll('.panel');
+  for (var i = 0; i < tabs.length; i++) tabs[i].classList.remove('active');
+  for (var i = 0; i < panels.length; i++) panels[i].classList.remove('active');
+  tabEl.classList.add('active');
+  var panelId = 'panel-' + tabEl.getAttribute('data-tab');
+  var panel = document.getElementById(panelId);
+  if (panel) panel.classList.add('active');
+  setTimeout(resizeCanvases, 50);
+}
+
+function handleToggle(btn) {
+  btn.classList.toggle('on');
+  var on = btn.classList.contains('on');
+  dbg('Toggle ' + btn.id + ' = ' + on);
+  switch(btn.id) {
+    case 'toggleNR': settings.noiseReduction = on; break;
+    case 'toggleFreq': settings.freqComp = on; break;
+    case 'toggleDRC': settings.dynamicRange = on; break;
+    case 'toggleAGC': settings.agcBypass = on; break;
+    case 'toggleTranscript':
+      settings.transcription = on;
+      if (on && isScanning) startSpeechRecognition();
+      else if (!on && recognition) { recognition.abort(); recognition = null; }
+      break;
+    case 'toggleFingerprint': settings.fingerprint = on; break;
+    case 'toggleEnroll': settings.autoEnroll = on; break;
+    case 'toggleLang': settings.bilingual = on; break;
+    case 'toggleRecord': settings.recordAudio = on; break;
+  }
+  if (processorNode) processorNode.port.postMessage(settings);
+}
+
+function handleMode(btn) {
+  var btns = document.querySelectorAll('.mode-btn');
+  for (var i = 0; i < btns.length; i++) btns[i].classList.remove('active');
+  btn.classList.add('active');
+  var mode = btn.getAttribute('data-mode');
+  dbg('Mode: ' + mode);
+  if (mode === 'forensic') { settings.agcBypass = true; settings.noiseReduction = true; }
+  else if (mode === 'voice') { settings.agcBypass = false; settings.noiseReduction = true; }
+  else { settings.agcBypass = true; settings.noiseReduction = false; }
+  if (processorNode) processorNode.port.postMessage(settings);
+}
+
+function handleGain(el) {
+  settings.gain = el.value / 100;
+  var db = settings.gain > 0 ? (20 * Math.log10(settings.gain)).toFixed(1) : '-inf';
+  $('gainValue').textContent = db + ' dB';
+  if (processorNode) processorNode.port.postMessage(settings);
+}
+
+// ============================================================
+// GEOLOCATION
+// ============================================================
+
+var currentLocation = null;
+var geoWatchId = null;
+
+function requestGeoLocation() {
+  if (!navigator.geolocation) { dbg('Geolocation not available'); return; }
+  dbg('Requesting GPS location...');
+  navigator.geolocation.getCurrentPosition(
+    function(pos) {
+      currentLocation = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        altitude: pos.coords.altitude,
+        timestamp: pos.timestamp
+      };
+      dbg('GPS: ' + currentLocation.lat.toFixed(6) + ', ' + currentLocation.lng.toFixed(6) + ' (+-' + currentLocation.accuracy.toFixed(0) + 'm)');
+      updateGeoDisplay();
+    },
+    function(err) { dbg('GPS error: ' + err.message); },
+    { enableHighAccuracy: true, timeout: 15000, maximumAge: 30000 }
+  );
+  // Continuous tracking
+  geoWatchId = navigator.geolocation.watchPosition(
+    function(pos) {
+      currentLocation = {
+        lat: pos.coords.latitude,
+        lng: pos.coords.longitude,
+        accuracy: pos.coords.accuracy,
+        altitude: pos.coords.altitude,
+        timestamp: pos.timestamp
+      };
+      updateGeoDisplay();
+    },
+    function(err) {},
+    { enableHighAccuracy: true, maximumAge: 10000 }
+  );
+}
+
+function updateGeoDisplay() {
+  if (!currentLocation) return;
+  var geoText = currentLocation.lat.toFixed(6) + ', ' + currentLocation.lng.toFixed(6) +
+    ' (+-' + currentLocation.accuracy.toFixed(0) + 'm)' +
+    (currentLocation.altitude !== null ? ' Alt:' + currentLocation.altitude.toFixed(1) + 'm' : '');
+  var el = $('geoInfo');
+  if (el) {
+    el.style.display = 'block';
+    el.innerHTML = '<span style="color:var(--accent-green);font-weight:700">GPS</span> ' + geoText;
+  }
+  var scanGeo = $('scannerGeo');
+  if (scanGeo) {
+    scanGeo.style.display = 'block';
+    scanGeo.innerHTML = 'GPS: ' + geoText;
+  }
+}
+
+// ============================================================
+// BOOT: Load persisted data
+// ============================================================
+
+loadDetectionLog();
+updateStorageInfo();
+if (Object.keys(fingerprinter.speakers).length > 0) {
+  scanStats.uniqueSpeakers = new Set(Object.keys(fingerprinter.speakers));
+  $('statSpeakers').textContent = scanStats.uniqueSpeakers.size;
+  $('mSpkrs').textContent = scanStats.uniqueSpeakers.size;
+  updateSpeakerList(null);
+}
+
+// Restore persisted case/operator metadata into the form
+(function() {
+  var ci = loadCaseInfo();
+  if ($('caseId')) $('caseId').value = ci.caseId || '';
+  if ($('caseOperator')) $('caseOperator').value = ci.operator || '';
+  if ($('caseNotes')) $('caseNotes').value = ci.notes || '';
+})();
+
+dbg('MediaRecorder: ' + (typeof MediaRecorder !== 'undefined' ? 'YES (' + (pickAudioMime() || 'default') + ')' : 'NO'));
+dbg('crypto.subtle: ' + (window.crypto && crypto.subtle ? 'YES' : 'NO (needs https)'));
+
+resizeCanvases();
+dbg('UI handlers registered');
+dbg('Persistent storage loaded');
+</script>

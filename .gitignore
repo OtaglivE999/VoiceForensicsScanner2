@@ -57,6 +57,7 @@ voice_library/*.npy
 .pytest_cache/
 .coverage
 htmlcov/
+test-results/
 
 # OS files
 .DS_Store
@@ -65,3 +66,8 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.temp
+
+# Node.js
+node_modules/
+package.json
+package-lock.json

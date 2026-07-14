@@ -1,0 +1,16 @@
+WEBVTT
+
+NOTE Voice Forensics session transcript — aligned to session_audio start 2025-07-13T09:30:00.000Z
+
+1
+00:00:00.000 --> 00:00:01.500
+<v Speaker 1>Hello, testing one two three. [jitter 1.2% · pitch 142Hz]
+
+2
+00:00:02.000 --> 00:00:04.100
+<v Speaker 1>Can you hear me clearly now? [jitter 0.9% · pitch 139Hz]
+
+3
+00:00:05.000 --> 00:00:05.800
+<v Speaker 2>(voice detected) [jitter 1.8% · pitch 210Hz]
+
